@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Certificate Installation</title>
+  <link rel="stylesheet" href="../shared.css">
+  <style>
+    body {
+      -webkit-app-region: drag;
+    }
+
+    .container {
+      -webkit-app-region: no-drag;
+    }
+
+    .header {
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+    }
+
+    h1 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      color: CanvasText;
+    }
+
+    .subtitle {
+      font-size: 13px;
+      color: GrayText;
+    }
+
+    .content {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 600;
+      color: CanvasText;
+    }
+
+    p {
+      font-size: 13px;
+      line-height: 1.5;
+      color: CanvasText;
+    }
+
+    .example {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Courier New', monospace;
+      font-size: 12px;
+      color: GrayText;
+    }
+
+    .feature-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .feature-list li {
+      font-size: 13px;
+      color: CanvasText;
+      padding-left: 20px;
+      position: relative;
+      line-height: 1.4;
+    }
+
+    .feature-list li:before {
+      content: "•";
+      position: absolute;
+      left: 6px;
+      color: GrayText;
+    }
+
+    .info-box {
+      background: Field;
+      border: 1px solid ButtonBorder;
+      border-radius: 6px;
+      padding: 12px;
+    }
+
+    .info-box p {
+      font-size: 12px;
+      color: FieldText;
+    }
+
+    .info-box strong {
+      color: FieldText;
+    }
+
+    .buttons {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 20px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(128, 128, 128, 0.2);
+    }
+
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .loading.active {
+      display: block;
+    }
+
+    .loading .spinner {
+      width: 32px;
+      height: 32px;
+      margin: 0 auto 16px;
+      border: 3px solid rgba(128, 128, 128, 0.2);
+      border-top: 3px solid Highlight;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading p {
+      color: CanvasText;
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    /* Dark mode specific adjustments */
+    @media (prefers-color-scheme: dark) {
+      .info-box {
+        background: #2a2a2a;
+        border-color: #555;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Certificate Installation</h1>
+      <p class="subtitle">LocalNode needs to install a security certificate</p>
+    </div>
+
+    <div class="content" id="main-content">
+      <div class="section">
+        <h2>Why is this needed?</h2>
+        <p>
+          To browse ENS websites like <span class="example">jthor.eth.localhost</span> with secure HTTPS, LocalNode needs to install a trusted certificate authority for <span class="example">*.eth.localhost</span> domains.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>What will be installed?</h2>
+        <ul class="feature-list">
+          <li>A local certificate authority (CA) on your computer</li>
+          <li>The CA added to your system's trusted certificates</li>
+          <li>Secure padlock icon for *.eth.localhost sites</li>
+        </ul>
+      </div>
+
+      <div class="info-box">
+        <p>
+          <strong>Authentication Required:</strong> macOS will prompt you to authenticate with Touch ID or your password.
+        </p>
+      </div>
+
+      <div class="section">
+        <h2>Privacy & Security</h2>
+        <p>
+          The certificate is stored locally and only used for *.eth.localhost domains. It cannot intercept traffic from other websites.
+        </p>
+      </div>
+
+      <div class="buttons">
+        <button id="skip-btn">Skip for Now</button>
+        <button class="btn-primary" id="install-btn">Install Certificate</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <p>Installing certificate...</p>
+      <p style="margin-top: 8px; font-size: 12px; color: GrayText;">Please authenticate with Touch ID when prompted</p>
+    </div>
+  </div>
+
+  <script>
+    // Use the secure electronAPI exposed by preload script
+
+    document.getElementById('install-btn').addEventListener('click', async () => {
+      document.getElementById('main-content').style.display = 'none';
+      document.getElementById('loading').classList.add('active');
+      
+      try {
+        const result = await window.electronAPI.installCertificate();
+        window.electronAPI.sendResponse(result);
+      } catch (error) {
+        console.error('Installation error:', error);
+        window.electronAPI.sendResponse({ success: false, error: error.message });
+      }
+    });
+
+    document.getElementById('skip-btn').addEventListener('click', () => {
+      window.electronAPI.sendResponse({ skipped: true });
+    });
+  </script>
+</body>
+</html>
+

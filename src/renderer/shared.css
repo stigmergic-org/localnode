@@ -1,0 +1,107 @@
+/* Shared styles for renderer windows */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  padding: 20px;
+  background: Canvas;
+  color: CanvasText;
+}
+
+/* Button styles */
+button {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: ButtonFace;
+  color: ButtonText;
+  border: 1px solid ButtonBorder;
+  border-radius: 6px;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+button:hover {
+  background: ButtonFace;
+  filter: brightness(0.95);
+}
+
+button:active {
+  filter: brightness(0.9);
+}
+
+button:focus {
+  outline: 2px solid Highlight;
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Primary button styles */
+button.btn-primary,
+button[type="submit"] {
+  background: #007AFF;
+  color: white;
+  border: 1px solid #007AFF;
+  font-weight: 500;
+}
+
+button.btn-primary:hover,
+button[type="submit"]:hover {
+  background: #0051D5;
+  border-color: #0051D5;
+}
+
+button.btn-primary:active,
+button[type="submit"]:active {
+  background: #004BB8;
+  border-color: #004BB8;
+}
+
+button.btn-primary:disabled,
+button[type="submit"]:disabled {
+  background: #007AFF;
+  border-color: #007AFF;
+  opacity: 0.5;
+}
+
+/* Dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  button.btn-primary,
+  button[type="submit"] {
+    background: #0A84FF;
+    border-color: #0A84FF;
+  }
+
+  button.btn-primary:hover,
+  button[type="submit"]:hover {
+    background: #409CFF;
+    border-color: #409CFF;
+  }
+
+  button.btn-primary:active,
+  button[type="submit"]:active {
+    background: #0077ED;
+    border-color: #0077ED;
+  }
+
+  button.btn-primary:disabled,
+  button[type="submit"]:disabled {
+    background: #0A84FF;
+    border-color: #0A84FF;
+    opacity: 0.5;
+  }
+}
+
