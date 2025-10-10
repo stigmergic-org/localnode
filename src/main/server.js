@@ -1,10 +1,11 @@
 import express from 'express';
-import { createServer } from 'https';
+import { createServer as createHttpsServer } from 'https';
 import fs from 'fs';
 import path from 'path';
 import { generateCertificates } from '../certificates/certificates.js';
 import { ENSResolver } from '../ethereum/ens-resolver.js';
 import { setupRoutes } from '../utils/routes.js';
+import { setupRpcRoutes } from '../utils/rpc-routes.js';
 import { HeliosClient } from '../ethereum/helios-client.js';
 
 /**
@@ -61,7 +62,12 @@ export class LocalNodeServer {
       ...options
     };
     
+    // Main app for ENS proxy
     this.app = express();
+    
+    // RPC app for Ethereum JSON-RPC
+    this.rpcApp = express();
+    
     this.heliosClient = new HeliosClient({
       consensusRpc: this.options.consensusRpc,
       executionRpc: this.options.executionRpc
@@ -73,18 +79,33 @@ export class LocalNodeServer {
   }
 
   setupMiddleware() {
+    // Middleware for main ENS proxy app
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
     
-    // Logging middleware
+    // Logging middleware for ENS app
     this.app.use((req, res, next) => {
-      console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
+      console.log(`[ENS] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
+      next();
+    });
+    
+    // Middleware for RPC app
+    this.rpcApp.use(express.json());
+    this.rpcApp.use(express.urlencoded({ extended: true }));
+    
+    // Logging middleware for RPC app
+    this.rpcApp.use((req, res, next) => {
+      console.log(`[RPC] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
       next();
     });
   }
 
   setupRoutes() {
+    // Setup ENS proxy routes
     setupRoutes(this.app, this.ensResolver, this.options);
+    
+    // Setup RPC routes
+    setupRpcRoutes(this.rpcApp, this.heliosClient);
   }
 
   async start() {
@@ -97,29 +118,47 @@ export class LocalNodeServer {
       // Generate SSL certificates using local CA
       await generateCertificates(this.options.certDir, this.options.domain);
       
-      // Start HTTPS server immediately (before Helios is synced)
+      // Read SSL certificates
       const httpsOptions = {
         key: fs.readFileSync(path.join(this.options.certDir, 'key.pem')),
         cert: fs.readFileSync(path.join(this.options.certDir, 'cert.pem'))
       };
 
-      this.httpsServer = createServer(httpsOptions, this.app);
+      // Create a router to handle both ENS and RPC requests on HTTPS
+      const combinedApp = express();
+      
+      // Route based on host header
+      combinedApp.use((req, res, next) => {
+        const host = req.headers.host || '';
+        
+        // Check if this is an RPC request (ethereum.node.localhost)
+        if (host.includes('ethereum.node.')) {
+          return this.rpcApp(req, res, next);
+        }
+        
+        // Otherwise, handle as ENS proxy
+        return this.app(req, res, next);
+      });
+
+      // Start HTTPS server on port 443 (handles both ENS and RPC requests)
+      this.httpsServer = createHttpsServer(httpsOptions, combinedApp);
 
       this.httpsServer.listen(this.options.port, () => {
-        console.log(`HTTPS server listening on port ${this.options.port}`);
-        console.log(`Access ENS sites at: https://your-domain.eth.${this.options.domain}`);
-        console.log(`Example: https://vitalik.eth.${this.options.domain}`);
-        console.log('Note: Requests will be queued until Helios finishes syncing...');
+        console.log(`\n🔒 HTTPS server listening on port ${this.options.port}`);
+        console.log(`   ENS sites: https://your-domain.eth.${this.options.domain}`);
+        console.log(`   Example: https://vitalik.eth.${this.options.domain}`);
+        console.log(`   Ethereum RPC: https://ethereum.node.${this.options.domain}`);
+        console.log('\nNote: Requests will be queued until Helios finishes syncing...\n');
       });
 
       // Start Helios light client in the background (don't block server startup)
       this.heliosClient.start().then(() => {
         // Initialize ENS resolver with Helios transport once synced
         this.ensResolver.init();
-        console.log('Server is now fully ready to handle ENS requests');
+        console.log('✅ Server is now fully ready to handle ENS and RPC requests\n');
       }).catch(error => {
-        console.error('Failed to start Helios client:', error);
-        console.error('Server will continue to run but ENS resolution will not work');
+        console.error('❌ Failed to start Helios client:', error);
+        console.error('Server will continue to run but ENS resolution and RPC will not work\n');
       });
 
       // Graceful shutdown
@@ -172,8 +211,9 @@ export class LocalNodeServer {
       this.ensResolver = new ENSResolver(this.heliosClient);
     }
     
-    // Recreate the app with new routes
+    // Recreate the apps with new routes
     this.app = express();
+    this.rpcApp = express();
     this.setupMiddleware();
     this.setupRoutes();
     

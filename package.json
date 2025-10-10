@@ -12,7 +12,11 @@
     "build:mac:dev": "electron-builder --mac --arm64 --dir",
     "build:linux": "electron-builder --linux",
     "build:all": "electron-builder --mac --linux",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run",
+    "t": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest run --coverage"
   },
   "build": {
     "appId": "eth.localnode.app",
@@ -91,7 +95,9 @@
   },
   "devDependencies": {
     "electron": "^38.2.1",
-    "electron-builder": "^25.1.8"
+    "electron-builder": "^25.1.8",
+    "vitest": "^1.0.0",
+    "@vitest/ui": "^1.0.0"
   },
   "engines": {
     "node": ">=16.0.0"
