@@ -197,6 +197,15 @@
       <p>Installing certificate...</p>
       <p style="margin-top: 8px; font-size: 12px; color: GrayText;">Please authenticate with Touch ID when prompted</p>
     </div>
+
+    <div class="loading" id="success">
+      <div style="font-size: 48px; margin-bottom: 16px;">✅</div>
+      <p style="font-weight: 600; margin-bottom: 12px;">Certificate installed successfully!</p>
+      <p style="color: GrayText;">You might need to restart your browser for the changes to take effect.</p>
+      <div class="buttons" style="border: none; margin-top: 20px;">
+        <button class="btn-primary" id="done-btn">Done</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -208,7 +217,16 @@
       
       try {
         const result = await window.electronAPI.installCertificate();
-        window.electronAPI.sendResponse(result);
+        
+        if (result.success) {
+          // Show success message and resize window to fit new content
+          document.getElementById('loading').classList.remove('active');
+          document.getElementById('success').classList.add('active');
+          window.electronAPI.resizeWindow(540, 420);
+        } else {
+          // On failure, send response to close window
+          window.electronAPI.sendResponse(result);
+        }
       } catch (error) {
         console.error('Installation error:', error);
         window.electronAPI.sendResponse({ success: false, error: error.message });
@@ -217,6 +235,13 @@
 
     document.getElementById('skip-btn').addEventListener('click', () => {
       window.electronAPI.sendResponse({ skipped: true });
+    });
+
+    // Done button closes the window after showing success message
+    document.addEventListener('click', (e) => {
+      if (e.target.id === 'done-btn') {
+        window.electronAPI.sendResponse({ success: true });
+      }
     });
   </script>
 </body>

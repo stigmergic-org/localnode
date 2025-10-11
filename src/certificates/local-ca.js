@@ -2,20 +2,18 @@ import forge from 'node-forge';
 import fs from 'fs';
 import path from 'path';
 import { createInterface } from 'readline';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { createPlatformDialog } from '../platform/dialogs.js';
 import { createPlatformInstaller } from '../platform/installers.js';
-
-const execAsync = promisify(exec);
 
 class LocalCA {
   constructor(certDir) {
     this.certDir = certDir;
-    this.caKeyPath = path.join(certDir, 'ca-key.pem');
     this.caCertPath = path.join(certDir, 'ca-cert.pem');
     this.serverKeyPath = path.join(certDir, 'key.pem');
     this.serverCertPath = path.join(certDir, 'cert.pem');
+    // CA private key is kept in memory only (never written to disk)
+    this.caPrivateKey = null;
+    this.caCertificate = null;
   }
 
   async initialize(skipInstallPrompt = false) {
@@ -25,7 +23,7 @@ class LocalCA {
     }
 
     // Check if certificates exist and are valid
-    const certificatesExist = fs.existsSync(this.caKeyPath) && fs.existsSync(this.caCertPath) && 
+    const certificatesExist = fs.existsSync(this.caCertPath) && 
                              fs.existsSync(this.serverKeyPath) && fs.existsSync(this.serverCertPath);
 
     if (certificatesExist) {
@@ -91,14 +89,15 @@ class LocalCA {
     // Sign CA certificate with SHA-256
     caCert.sign(caKeys.privateKey, forge.md.sha256.create());
 
-    // Save CA files
-    const caKeyPem = forge.pki.privateKeyToPem(caKeys.privateKey);
-    const caCertPem = forge.pki.certificateToPem(caCert);
+    // Store CA key and cert in memory (never write private key to disk for security)
+    this.caPrivateKey = caKeys.privateKey;
+    this.caCertificate = caCert;
 
-    fs.writeFileSync(this.caKeyPath, caKeyPem);
+    // Save only the CA certificate (public) to disk
+    const caCertPem = forge.pki.certificateToPem(caCert);
     fs.writeFileSync(this.caCertPath, caCertPem);
 
-    console.log('Local CA created successfully');
+    console.log('🔒 Local CA created successfully (private key kept in memory only)');
   }
 
   async promptForCAInstallation() {
@@ -132,6 +131,7 @@ class LocalCA {
         
         if (success) {
           console.log('✅ CA installed successfully! Your browser will now trust certificates automatically.');
+          console.log('⚠️  Please restart your browser for the changes to take effect.');
         } else {
           console.log('❌ Failed to install CA. You can install it manually later.');
           this.showManualInstallationInstructions();
@@ -152,22 +152,9 @@ class LocalCA {
   }
 
   async isCertificateInstalled() {
-    if (process.platform !== 'darwin') {
-      // For non-macOS platforms, assume not installed
-      // This can be enhanced later for Windows/Linux
-      return false;
-    }
-
-    try {
-      // Check if the certificate is in the macOS system keychain
-      const { stdout } = await execAsync(
-        `security find-certificate -c "LocalNode Local CA" -p /Library/Keychains/System.keychain 2>/dev/null`
-      );
-      return stdout.trim().length > 0;
-    } catch (error) {
-      // If the command fails, the certificate is not installed
-      return false;
-    }
+    // Delegate to platform-specific installer
+    const installer = createPlatformInstaller();
+    return await installer.isCAInstalled(this.caCertPath);
   }
 
   showManualInstallationInstructions() {
@@ -237,7 +224,7 @@ class LocalCA {
 
   removeOldCertificates() {
     try {
-      const files = [this.caKeyPath, this.caCertPath, this.serverKeyPath, this.serverCertPath];
+      const files = [this.caCertPath, this.serverKeyPath, this.serverCertPath];
       files.forEach(file => {
         if (fs.existsSync(file)) {
           fs.unlinkSync(file);
@@ -249,6 +236,7 @@ class LocalCA {
     }
   }
 
+
   async generateServerCertificate(domain) {
     console.log('Generating server certificate...');
 
@@ -258,11 +246,13 @@ class LocalCA {
       return;
     }
 
-    // Load CA
-    const caKeyPem = fs.readFileSync(this.caKeyPath, 'utf8');
-    const caCertPem = fs.readFileSync(this.caCertPath, 'utf8');
-    const caKey = forge.pki.privateKeyFromPem(caKeyPem);
-    const caCert = forge.pki.certificateFromPem(caCertPem);
+    // Use in-memory CA key and cert (more secure - never touches disk)
+    if (!this.caPrivateKey || !this.caCertificate) {
+      throw new Error('CA not initialized. Call createCA() first.');
+    }
+    
+    const caKey = this.caPrivateKey;
+    const caCert = this.caCertificate;
 
     // Generate server key pair with stronger key size
     const serverKeys = forge.pki.rsa.generateKeyPair(4096);
@@ -311,11 +301,11 @@ class LocalCA {
           },
           {
             type: 2, // DNS
-            value: 'localhost'
+            value: `*.node.${domain}`
           },
           {
-            type: 7, // IP
-            ip: '127.0.0.1'
+            type: 2, // DNS
+            value: `node.${domain}`
           }
         ]
       }
@@ -332,6 +322,7 @@ class LocalCA {
     fs.writeFileSync(this.serverCertPath, serverCertPem);
 
     console.log('✅ Server certificate generated and signed by local CA');
+    console.log('🔒 CA private key never written to disk (kept in memory only)');
     console.log('Your browser should now trust this certificate automatically');
   }
 }

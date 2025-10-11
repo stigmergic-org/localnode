@@ -65,5 +65,13 @@ export function setupIPCHandlers(server) {
       certDialogWindow.close();
     }
   });
+
+  ipcMain.on('resize-cert-dialog', (event, { width, height }) => {
+    const certDialogWindow = getCertDialogWindow();
+    if (certDialogWindow) {
+      certDialogWindow.setSize(width, height);
+      certDialogWindow.center();
+    }
+  });
 }
 

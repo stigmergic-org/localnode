@@ -2,6 +2,8 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
+import forge from 'node-forge';
 import sudo from '@expo/sudo-prompt';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -15,6 +17,10 @@ class PlatformInstaller {
     throw new Error('installCA must be implemented by subclass');
   }
 
+  async isCAInstalled(caCertPath) {
+    throw new Error('isCAInstalled must be implemented by subclass');
+  }
+
   getManualInstructions(caCertPath) {
     throw new Error('getManualInstructions must be implemented by subclass');
   }
@@ -24,22 +30,15 @@ class MacOSInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
     try {
       console.log('Installing CA to macOS keychain...');
-      console.log('💡 Use Touch ID or enter your password when prompted...');
       
-      // Find the app icon - check multiple possible locations
-      const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.png');
+      // Install to the user's login keychain - no sudo/admin privileges required!
+      // This is simpler and works perfectly for the current user
+      const homeDir = process.env.HOME;
+      const loginKeychain = `${homeDir}/Library/Keychains/login.keychain-db`;
       
-      const options = {
-        name: 'Local Node',
-        // icns path for macOS only (optional, falls back to default if not found)
-        // Note: In production builds, Electron Builder creates icon.icns automatically
-        icns: iconPath,
-      };
+      await execAsync(`/usr/bin/security add-trusted-cert -r trustRoot -k "${loginKeychain}" "${caCertPath}"`);
       
-      const command = `security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caCertPath}"`;
-      
-      await sudoExec(command, options);
-      console.log('✅ CA installed to macOS keychain successfully');
+      console.log('✅ Certificate installed and trusted successfully');
       return true;
     } catch (error) {
       console.warn('Failed to install CA to macOS keychain:', error.message);
@@ -47,13 +46,65 @@ class MacOSInstaller extends PlatformInstaller {
     }
   }
 
+  async isCAInstalled(caCertPath) {
+    try {
+      // Read the local CA certificate file
+      if (!fs.existsSync(caCertPath)) {
+        return false;
+      }
+      
+      const localCertPem = fs.readFileSync(caCertPath, 'utf8');
+      const localCert = forge.pki.certificateFromPem(localCertPem);
+
+      // Calculate SHA-1 fingerprint (macOS security command uses SHA-1 as unique ID)
+      const sha1Hash = forge.md.sha1.create()
+        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
+        .digest()
+        .toHex()
+        .toUpperCase();
+
+      // Search for the certificate by its unique SHA-1 hash in the login keychain
+      // -a shows all certificates, -Z shows SHA-1 hash, then we grep for our specific hash
+      const homeDir = process.env.HOME;
+      const loginKeychain = `${homeDir}/Library/Keychains/login.keychain-db`;
+      const { stdout } = await execAsync(
+        `security find-certificate -a -Z "${loginKeychain}" 2>/dev/null | grep -A 1 "SHA-1 hash:" | grep "${sha1Hash}"`
+      );
+      
+      // If we found the certificate, verify it's actually trusted as a root CA
+      if (stdout.trim().length > 0) {
+        // Now check if this certificate is trusted
+        // We do this by checking the trust settings for SSL
+        try {
+          const trustResult = await execAsync(
+            `security verify-cert -c "${caCertPath}" -p ssl 2>&1`
+          );
+          // If verify-cert succeeds (exit code 0), the cert is trusted
+          return true;
+        } catch (trustError) {
+          // If verify-cert fails, the cert exists but is not trusted
+          console.log('Certificate exists in keychain but is not trusted as a root CA');
+          return false;
+        }
+      }
+      
+      return false;
+    } catch (error) {
+      // If the command fails, the certificate is not installed
+      return false;
+    }
+  }
+
   getManualInstructions(caCertPath) {
+    const homeDir = process.env.HOME;
+    const loginKeychain = `${homeDir}/Library/Keychains/login.keychain-db`;
+    
     return {
       title: 'macOS:',
       instructions: [
-        `sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain "${caCertPath}"`,
+        `security add-trusted-cert -r trustAsRoot -k "${loginKeychain}" "${caCertPath}"`,
         '',
-        'Or double-click the certificate file and add it to System keychain.'
+        'Or double-click the certificate file and add it to your login keychain with full trust.'
       ]
     };
   }
@@ -79,6 +130,36 @@ class WindowsInstaller extends PlatformInstaller {
     }
   }
 
+  async isCAInstalled(caCertPath) {
+    try {
+      // Read the local CA certificate file
+      if (!fs.existsSync(caCertPath)) {
+        return false;
+      }
+      
+      const localCertPem = fs.readFileSync(caCertPath, 'utf8');
+      const localCert = forge.pki.certificateFromPem(localCertPem);
+
+      // Calculate SHA-1 fingerprint
+      const sha1Hash = forge.md.sha1.create()
+        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
+        .digest()
+        .toHex()
+        .toUpperCase();
+
+      // Check if certificate exists in Windows cert store
+      // certutil -verifystore Root returns all certs; we look for our thumbprint
+      const { stdout } = await execAsync(
+        `certutil -verifystore Root 2>nul | findstr /i "${sha1Hash}"`
+      );
+      
+      return stdout.trim().length > 0;
+    } catch (error) {
+      // If the command fails, the certificate is not installed
+      return false;
+    }
+  }
+
   getManualInstructions(caCertPath) {
     return {
       title: 'Windows:',
@@ -96,20 +177,30 @@ class LinuxInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
     try {
       console.log('Installing CA to Linux trust store...');
+      
+      // Calculate SHA-1 hash to include in filename
+      const localCertPem = fs.readFileSync(caCertPath, 'utf8');
+      const localCert = forge.pki.certificateFromPem(localCertPem);
+      const sha1Hash = forge.md.sha1.create()
+        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
+        .digest()
+        .toHex()
+        .toLowerCase();
+
       const caDir = '/usr/local/share/ca-certificates';
-      const caFile = path.join(caDir, 'localnode-ca.crt');
+      // Include hash in filename to make it unique to this specific certificate
+      const caFile = path.join(caDir, `localnode-ca-${sha1Hash}.crt`);
       
       const options = {
         name: 'Local Node',
       };
       
-      // First copy the certificate
-      const copyCommand = `cp "${caCertPath}" "${caFile}"`;
-      await sudoExec(copyCommand, options);
+      // Remove any old LocalNode CA certificates first (they'll have different hashes)
+      const cleanupCommand = `rm -f ${caDir}/localnode-ca-*.crt 2>/dev/null || true`;
       
-      // Then update certificates
-      const updateCommand = 'update-ca-certificates';
-      await sudoExec(updateCommand, options);
+      // Copy the new certificate and update trust store in one sudo session
+      const command = `${cleanupCommand} && cp "${caCertPath}" "${caFile}" && update-ca-certificates`;
+      await sudoExec(command, options);
       
       console.log('✅ CA installed to Linux trust store successfully');
       return true;
@@ -119,11 +210,56 @@ class LinuxInstaller extends PlatformInstaller {
     }
   }
 
+  async isCAInstalled(caCertPath) {
+    try {
+      // Read the local certificate to get its hash
+      if (!fs.existsSync(caCertPath)) {
+        return false;
+      }
+
+      const localCertPem = fs.readFileSync(caCertPath, 'utf8');
+      const localCert = forge.pki.certificateFromPem(localCertPem);
+      const sha1Hash = forge.md.sha1.create()
+        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
+        .digest()
+        .toHex()
+        .toLowerCase();
+
+      // Check if the certificate file with this specific hash exists
+      const caFile = `/usr/local/share/ca-certificates/localnode-ca-${sha1Hash}.crt`;
+      
+      return fs.existsSync(caFile);
+    } catch (error) {
+      // If we can't check, assume not installed
+      return false;
+    }
+  }
+
   getManualInstructions(caCertPath) {
+    // Calculate hash for the manual instructions
+    let hashSuffix = '';
+    try {
+      const localCertPem = fs.readFileSync(caCertPath, 'utf8');
+      const localCert = forge.pki.certificateFromPem(localCertPem);
+      const sha1Hash = forge.md.sha1.create()
+        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
+        .digest()
+        .toHex()
+        .toLowerCase();
+      hashSuffix = `-${sha1Hash}`;
+    } catch (error) {
+      // If we can't read cert, just show generic instructions
+      hashSuffix = '-<hash>';
+    }
+
     return {
       title: 'Linux:',
       instructions: [
-        `sudo cp "${caCertPath}" /usr/local/share/ca-certificates/localnode-ca.crt`,
+        '# Remove any old LocalNode certificates',
+        'sudo rm -f /usr/local/share/ca-certificates/localnode-ca-*.crt',
+        '',
+        '# Install the new certificate',
+        `sudo cp "${caCertPath}" /usr/local/share/ca-certificates/localnode-ca${hashSuffix}.crt`,
         'sudo update-ca-certificates'
       ]
     };
@@ -133,6 +269,11 @@ class LinuxInstaller extends PlatformInstaller {
 class UnsupportedInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
     console.warn('CA installation not supported on this platform');
+    return false;
+  }
+
+  async isCAInstalled(caCertPath) {
+    // For unsupported platforms, we can't verify installation
     return false;
   }
 

@@ -119,9 +119,11 @@ export class LocalNodeServer {
       await generateCertificates(this.options.certDir, this.options.domain);
       
       // Read SSL certificates
+      // Include CA certificate in the chain for proper validation
       const httpsOptions = {
         key: fs.readFileSync(path.join(this.options.certDir, 'key.pem')),
-        cert: fs.readFileSync(path.join(this.options.certDir, 'cert.pem'))
+        cert: fs.readFileSync(path.join(this.options.certDir, 'cert.pem')),
+        ca: fs.readFileSync(path.join(this.options.certDir, 'ca-cert.pem'))
       };
 
       // Create a router to handle both ENS and RPC requests on HTTPS

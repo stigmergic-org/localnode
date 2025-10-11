@@ -11,11 +11,10 @@ import { createCertDialog } from './windows.js';
 export async function checkAndInstallCertificates() {
   const certDir = getCertsDir();
   const localCA = new LocalCA(certDir);
-  const caKeyPath = path.join(certDir, 'ca-key.pem');
   const caCertPath = path.join(certDir, 'ca-cert.pem');
 
-  // If certificates already exist and are installed, skip
-  if (fs.existsSync(caKeyPath) && fs.existsSync(caCertPath)) {
+  // If CA certificate already exists and is installed, skip
+  if (fs.existsSync(caCertPath)) {
     const isInstalled = await localCA.isCertificateInstalled();
     if (isInstalled) {
       console.log('Certificate is already installed in system keychain');
@@ -25,7 +24,7 @@ export async function checkAndInstallCertificates() {
 
   // Need to create or install certificates
   // Create CA first if it doesn't exist
-  if (!fs.existsSync(caKeyPath) || !fs.existsSync(caCertPath)) {
+  if (!fs.existsSync(caCertPath)) {
     console.log('Creating Certificate Authority...');
     await localCA.createCA();
   }
