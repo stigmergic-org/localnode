@@ -5,7 +5,7 @@ A system tray application that creates a local version of eth.limo, allowing you
 ## Features
 
 - 🌐 Local ENS resolution using Ethereum RPC
-- 📁 IPFS content serving via Kubo node
+- 📁 **Batteries-included IPFS** - Automatically uses your kubo installation or starts a managed instance
 - 🔒 HTTPS with locally-trusted certificates
 - 🎯 Subdomain routing for `*.eth.localhost`
 - ⚙️ Settings UI for easy configuration
@@ -48,12 +48,22 @@ All settings are automatically saved to `~/.localnode/config.json` and loaded on
 LocalNode stores all its data in `~/.localnode/`:
 - `config.json` - Your configuration settings
 - `certs/` - SSL certificates for HTTPS
+- `ipfs/` - Managed IPFS instance data (when not using system IPFS)
+- `cache/` - Cached ENS resolutions and IPFS content
 
 ## Prerequisites
 
-1. **Ethereum Node**: You need a running Ethereum node (like Geth, Parity, or Infura) for ENS resolution
-2. **IPFS Gateway**: You need a running IPFS gateway (like Kubo's HTTP gateway) for content serving
-3. **SSL Certificate**: The tool will generate self-signed certificates automatically
+**None!** LocalNode ships with everything you need:
+
+1. **Ethereum Node**: Uses Helios light client for trustless Ethereum access
+2. **IPFS**: Automatically detects and uses existing kubo installation on port 5001, or starts its own managed instance on standard ports
+3. **SSL Certificates**: Automatically generates locally-trusted certificates
+
+### Optional: Using Your Own IPFS Installation
+
+If you have kubo/IPFS already running on port 5001, LocalNode will automatically detect and use it. Otherwise, it will download and run its own instance with API on port 5001 and gateway on port 58080 (custom port to avoid conflicts).
+
+See [IPFS-INTEGRATION.md](IPFS-INTEGRATION.md) for detailed information about the IPFS integration.
 
 ## Examples
 
@@ -107,9 +117,12 @@ If ENS domains aren't resolving:
 
 If content isn't loading:
 
-1. Ensure your IPFS gateway is running and accessible
-2. Check that the IPFS hash exists in your gateway
-3. Verify the IPFS gateway URL is correct
+1. Check the console logs to see if LocalNode is using existing IPFS or managed instance
+2. If using managed IPFS, verify the managed instance started successfully (check logs)
+3. If you have an existing IPFS installation, ensure it's running on port 5001: `ipfs daemon`
+4. Check that the IPFS hash exists and can be fetched
+
+For detailed IPFS troubleshooting, see [IPFS-INTEGRATION.md](IPFS-INTEGRATION.md).
 
 ## Development
 

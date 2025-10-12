@@ -128,11 +128,6 @@
       <input type="text" id="executionRpc" name="executionRpc" required>
     </div>
     
-    <div class="field">
-      <label for="ipfsApiUrl">IPFS API URL</label>
-      <input type="text" id="ipfsApiUrl" name="ipfsApiUrl" required>
-    </div>
-    
     <div class="buttons">
       <button type="button" id="cancelBtn">Cancel</button>
       <button type="submit" id="saveBtn">Save</button>
@@ -146,7 +141,6 @@
     window.electronAPI.loadConfig().then(config => {
       document.getElementById('consensusRpc').value = config.consensusRpc;
       document.getElementById('executionRpc').value = config.executionRpc;
-      document.getElementById('ipfsApiUrl').value = config.ipfsApiUrl;
     });
     
     // Handle form submission
@@ -164,8 +158,7 @@
       
       const config = {
         consensusRpc: document.getElementById('consensusRpc').value,
-        executionRpc: document.getElementById('executionRpc').value,
-        ipfsApiUrl: document.getElementById('ipfsApiUrl').value
+        executionRpc: document.getElementById('executionRpc').value
       };
       
       try {

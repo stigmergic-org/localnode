@@ -6,6 +6,10 @@ import { createRequire } from 'module';
 const require = createRequire(import.meta.url);
 const packageJson = require('../../package.json');
 
+// Get dependency versions from our package.json
+const heliosVersion = packageJson.dependencies['@a16z/helios']?.replace('^', '') || 'unknown';
+const kuboVersion = packageJson.dependencies['kubo']?.replace('^', '') || 'unknown';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -59,7 +63,7 @@ export function setupTray(onSettingsClick) {
     {
       label: 'Explore IPFS',
       click: () => {
-        shell.openExternal('https://webui.ipfs.io/');
+        shell.openExternal('http://localhost:5001/webui');
       }
     },
     {
@@ -83,6 +87,24 @@ export function setupTray(onSettingsClick) {
           click: () => {
             shell.openExternal('https://localnode.eth.localhost');
           }
+        },
+        {
+          type: 'separator'
+        },
+        {
+          label: `Helios v${heliosVersion}`,
+          click: () => {
+            shell.openExternal('https://github.com/a16z/helios');
+          }
+        },
+        {
+          label: `IPFS (Kubo) v${kuboVersion}`,
+          click: () => {
+            shell.openExternal('https://github.com/ipfs/kubo');
+          }
+        },
+        {
+          type: 'separator'
         },
         {
           label: 'Submit Feedback',

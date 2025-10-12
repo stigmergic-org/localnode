@@ -7,45 +7,7 @@ import { ENSResolver } from '../ethereum/ens-resolver.js';
 import { setupRoutes } from '../utils/routes.js';
 import { setupRpcRoutes } from '../utils/rpc-routes.js';
 import { HeliosClient } from '../ethereum/helios-client.js';
-
-/**
- * Fetch the IPFS gateway URL from the IPFS API
- * @param {string} apiUrl - The IPFS API URL
- * @returns {Promise<string>} The gateway URL
- */
-async function fetchGatewayUrl(apiUrl) {
-  try {
-    const response = await fetch(`${apiUrl}/api/v0/config?arg=Addresses.Gateway`, {
-      method: 'POST',
-      signal: AbortSignal.timeout(5000)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`IPFS API returned ${response.status}`);
-    }
-    
-    const data = await response.json();
-    const gatewayAddress = data.Value;
-    
-    // Convert the gateway address to a full URL
-    // Gateway address is typically in format "/ip4/127.0.0.1/tcp/8080"
-    if (gatewayAddress.includes('/ip4/')) {
-      const match = gatewayAddress.match(/\/ip4\/([^/]+)\/tcp\/(\d+)/);
-      if (match) {
-        const [, ip, port] = match;
-        return `http://${ip}:${port}`;
-      }
-    }
-    
-    // Fallback to default if we can't parse it
-    console.warn(`Could not parse gateway address: ${gatewayAddress}, using default`);
-    return 'http://localhost:8080';
-  } catch (error) {
-    console.warn(`Failed to fetch gateway URL from IPFS API: ${error.message}`);
-    console.warn('Using default gateway URL: http://localhost:8080');
-    return 'http://localhost:8080';
-  }
-}
+import { IPFSManager } from '../ipfs/ipfs-manager.js';
 
 /**
  * LocalNodeServer - Manages the Express server, HTTPS, Helios client, and ENS resolution
@@ -56,7 +18,6 @@ export class LocalNodeServer {
       port: options.port,
       consensusRpc: options.consensusRpc,
       executionRpc: options.executionRpc,
-      ipfsApiUrl: options.ipfsApiUrl,
       domain: options.domain,
       certDir: options.certDir || './certs',
       ...options
@@ -67,6 +28,9 @@ export class LocalNodeServer {
     
     // RPC app for Ethereum JSON-RPC
     this.rpcApp = express();
+    
+    // IPFS Manager (uses standard ports since we only start when they're free)
+    this.ipfsManager = new IPFSManager();
     
     this.heliosClient = new HeliosClient({
       consensusRpc: this.options.consensusRpc,
@@ -110,10 +74,13 @@ export class LocalNodeServer {
 
   async start() {
     try {
-      // Fetch gateway URL from IPFS API
-      console.log(`Fetching IPFS gateway URL from API: ${this.options.ipfsApiUrl}`);
-      this.options.ipfsGateway = await fetchGatewayUrl(this.options.ipfsApiUrl);
-      console.log(`Using IPFS gateway: ${this.options.ipfsGateway}`);
+      // Initialize IPFS (check for existing or start managed instance)
+      // IPFSManager will automatically fetch the gateway URL from IPFS config
+      console.log('Initializing IPFS...');
+      const ipfsConfig = await this.ipfsManager.initialize();
+      
+      // Update options with gateway URL
+      this.options.ipfsGateway = ipfsConfig.gatewayUrl;
       
       // Generate SSL certificates using local CA
       await generateCertificates(this.options.certDir, this.options.domain);
@@ -180,6 +147,11 @@ export class LocalNodeServer {
       // Stop Helios client first
       if (this.heliosClient) {
         await this.heliosClient.stop();
+      }
+      
+      // Stop managed IPFS instance if running
+      if (this.ipfsManager) {
+        await this.ipfsManager.stop();
       }
       
       if (this.httpsServer) {

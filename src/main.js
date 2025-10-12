@@ -49,7 +49,6 @@ app.whenReady().then(async () => {
     port: config.port,
     consensusRpc: config.consensusRpc,
     executionRpc: config.executionRpc,
-    ipfsApiUrl: config.ipfsApiUrl,
     domain: config.domain,
     certDir: getCertsDir()
   });

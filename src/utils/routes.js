@@ -21,15 +21,15 @@ function setupRoutes(app, ensResolver, options) {
   const proxyCache = new Map();
   // Main route handler for ENS domains
   app.get('*', async (req, res) => {
-    try {
-      const host = req.headers.host;
-      
-      // Extract ENS domain from subdomain
-      const ensDomain = extractENSDomain(host, options.domain);
-      if (!ensDomain) {
-        return res.status(404).send('Not a valid ENS domain');
-      }
+    const host = req.headers.host;
+    
+    // Extract ENS domain from subdomain (declare outside try/catch so it's available in error handler)
+    const ensDomain = extractENSDomain(host, options.domain);
+    if (!ensDomain) {
+      return res.status(404).send('Not a valid ENS domain');
+    }
 
+    try {
       console.log(`Processing request for ENS domain: ${ensDomain}`);
       
       // Resolve ENS to IPFS hash (will use cache on error)

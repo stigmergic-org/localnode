@@ -10,8 +10,6 @@ const DEFAULT_CONFIG = {
   // Helios light client configuration
   consensusRpc: 'https://ethereum.operationsolarstorm.org',
   executionRpc: 'https://mainnet.gateway.tenderly.co',
-  // IPFS configuration
-  ipfsApiUrl: 'http://localhost:5001',
   // Server configuration
   domain: 'localhost',
   port: 443,
@@ -46,6 +44,15 @@ export function getCacheDir() {
     fs.mkdirSync(cacheDir, { recursive: true });
   }
   return cacheDir;
+}
+
+// Get the IPFS directory path (for managed IPFS instance)
+export function getIpfsDir() {
+  const ipfsDir = path.join(CONFIG_DIR, 'ipfs');
+  if (!fs.existsSync(ipfsDir)) {
+    fs.mkdirSync(ipfsDir, { recursive: true });
+  }
+  return ipfsDir;
 }
 
 // Load configuration
