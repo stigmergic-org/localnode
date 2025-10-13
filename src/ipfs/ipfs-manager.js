@@ -82,14 +82,16 @@ export class IPFSManager {
       
       // Create IPFS node using the proper ipfsd-ctl API
       const ipfsRepoPath = getIpfsDir();
+      console.log(`  Repo Path: ${ipfsRepoPath}`);
       
       this.node = await createNode({
         type: 'kubo',
         rpc: createKuboClient,
         bin: kuboPath(),
-        init: {
-          repo: ipfsRepoPath
-        },
+        repo: ipfsRepoPath,
+        init: true,
+        start: true,
+        disposable: false,
         config: {
           Addresses: {
             Gateway: `/ip4/127.0.0.1/tcp/${MANAGED_GATEWAY_PORT}`
@@ -188,10 +190,19 @@ export class IPFSManager {
       try {
         console.log('Stopping managed IPFS instance...');
         await this.node.stop();
+        this.node = null;
+        this.client = null;
         console.log('✅ Managed IPFS instance stopped');
       } catch (error) {
         console.error('Error stopping managed IPFS instance:', error);
+        // Even if stop fails, clean up references
+        this.node = null;
+        this.client = null;
       }
+    } else if (this.client && !this.isManaged) {
+      // For external IPFS, just clear our client reference
+      console.log('Disconnecting from external IPFS instance...');
+      this.client = null;
     }
   }
 }

@@ -1,7 +1,6 @@
 import http from 'http';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { saveCidIfChanged } from './cache-manager.js';
-import { pinCid, pinPath } from './pin-manager.js';
 
 /**
  * Normalize gateway host - replace IP addresses with localhost for subdomain compatibility
@@ -14,6 +13,34 @@ function normalizeGatewayHost(gatewayUrl) {
   host = host.replace(/^127\.0\.0\.1/, 'localhost');
   host = host.replace(/^0\.0\.0\.0/, 'localhost');
   return host;
+}
+
+/**
+ * Copy CID to MFS cache (prevents garbage collection)
+ * @param {IPFSManager} ipfsManager - The IPFS manager instance
+ * @param {string} cid - The IPFS CID to cache
+ */
+async function cacheCidInMfs(ipfsManager, cid) {
+  try {
+    const client = ipfsManager.getClient();
+    const mfsPath = `/localnode-cache/${cid}`;
+    
+    // Check if already in MFS cache
+    try {
+      await client.files.stat(mfsPath);
+      // Already cached, no need to copy again
+      return;
+    } catch (error) {
+      // Not in cache, proceed with copy
+    }
+    
+    // Copy from IPFS to MFS (parents flag creates /localnode-cache if needed)
+    await client.files.cp(`/ipfs/${cid}`, mfsPath, { parents: true });
+    console.log(`[MFS] Cached CID: ${cid}`);
+  } catch (error) {
+    // Log but don't fail the request
+    console.error('[MFS] Error caching CID:', error.message);
+  }
 }
 
 function setupRoutes(app, ensResolver, options) {
@@ -47,18 +74,6 @@ function setupRoutes(app, ensResolver, options) {
         console.error('Cache save error:', err.message)
       );
       
-      // Pin the root CID
-      pinCid(ipfsHash).catch(err => 
-        console.error('Pin root error:', err.message)
-      );
-      
-      // Pin the requested path (if not root)
-      if (req.path !== '/') {
-        pinPath(ipfsHash, req.path).catch(err => 
-          console.error('Pin path error:', err.message)
-        );
-      }
-      
       // Get or create proxy middleware for this IPFS hash (reuse existing proxies)
       let proxy = proxyCache.get(ipfsHash);
       
@@ -88,6 +103,14 @@ function setupRoutes(app, ensResolver, options) {
               proxyRes.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate';
               proxyRes.headers['Pragma'] = 'no-cache';
               proxyRes.headers['Expires'] = '0';
+            }
+            
+            // Cache the CID in MFS after successful proxy (content is now in IPFS)
+            // Only do this once per CID (on the first successful request)
+            if (proxyRes.statusCode === 200) {
+              cacheCidInMfs(options.ipfsManager, ipfsHash).catch(err => 
+                console.error('MFS cache error:', err.message)
+              );
             }
           },
           onError: (err, req, res) => {

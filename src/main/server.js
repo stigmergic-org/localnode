@@ -42,8 +42,10 @@ export class LocalNodeServer {
     });
     this.ensResolver = new ENSResolver(this.heliosClient);
     
+    this.shutdownHandlersRegistered = false;
+    
     this.setupMiddleware();
-    this.setupRoutes();
+    // Note: setupRoutes() is called in start() after IPFS is initialized
   }
 
   setupMiddleware() {
@@ -80,7 +82,7 @@ export class LocalNodeServer {
 
   setupRoutes() {
     // Setup ENS proxy routes
-    setupRoutes(this.app, this.ensResolver, this.options);
+    setupRoutes(this.app, this.ensResolver, { ...this.options, ipfsManager: this.ipfsManager });
     
     // Setup RPC routes
     setupRpcRoutes(this.rpcApp, this.heliosClient);
@@ -94,6 +96,17 @@ export class LocalNodeServer {
     this.nodeCacheApp.get('/', (req, res) => {
       const indexPath = path.join(process.cwd(), 'src', 'renderer', 'node-cache', 'index.html');
       res.sendFile(indexPath);
+    });
+    
+    // Serve favicon
+    this.nodeCacheApp.get('/favicon.svg', (req, res) => {
+      const faviconPath = path.join(process.cwd(), 'assets', 'logo.svg');
+      res.sendFile(faviconPath);
+    });
+    
+    this.nodeCacheApp.get('/favicon.png', (req, res) => {
+      const faviconPath = path.join(process.cwd(), 'assets', 'logo.png');
+      res.sendFile(faviconPath);
     });
     
     // API endpoint to get all cached domains (fast - just domain + CID)
@@ -149,7 +162,7 @@ export class LocalNodeServer {
       }
       
       try {
-        const success = await clearDomainCache(domain);
+        const success = await clearDomainCache(domain, this.ipfsManager);
         res.json({ success });
       } catch (error) {
         console.error('Error clearing cache:', error);
@@ -167,6 +180,9 @@ export class LocalNodeServer {
       
       // Update options with gateway URL
       this.options.ipfsGateway = ipfsConfig.gatewayUrl;
+      
+      // Setup routes now that IPFS is initialized and gateway URL is available
+      this.setupRoutes();
       
       // Generate SSL certificates using local CA
       await generateCertificates(this.options.certDir, this.options.domain);
@@ -221,12 +237,19 @@ export class LocalNodeServer {
         console.error('Server will continue to run but ENS resolution and RPC will not work\n');
       });
 
-      // Graceful shutdown
-      process.on('SIGINT', () => {
-        console.log('\nShutting down servers...');
-        this.stop();
-        process.exit(0);
-      });
+      // Graceful shutdown handlers (register only once)
+      if (!this.shutdownHandlersRegistered) {
+        const shutdown = async (signal) => {
+          console.log(`\n${signal} received - shutting down servers...`);
+          await this.stop();
+          process.exit(0);
+        };
+        
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        
+        this.shutdownHandlersRegistered = true;
+      }
 
     } catch (error) {
       throw new Error(`Failed to start server: ${error.message}`);
@@ -276,12 +299,12 @@ export class LocalNodeServer {
       this.ensResolver = new ENSResolver(this.heliosClient);
     }
     
-    // Recreate the apps with new routes
+    // Recreate the apps
     this.app = express();
     this.rpcApp = express();
     this.nodeCacheApp = express();
     this.setupMiddleware();
-    this.setupRoutes();
+    // Note: setupRoutes() will be called in start() after IPFS is initialized
     
     await this.start();
   }
