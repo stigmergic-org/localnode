@@ -55,6 +55,12 @@ export function setupTray(onSettingsClick) {
       enabled: false
     },
     {
+      label: 'Dashboard',
+      click: () => {
+        shell.openExternal('https://node.localhost');
+      }
+    },
+    {
       label: 'Explore Dapps',
       click: () => {
         shell.openExternal('https://dapprank.eth.localhost');
@@ -64,12 +70,6 @@ export function setupTray(onSettingsClick) {
       label: 'Explore IPFS',
       click: () => {
         shell.openExternal('http://localhost:5001/webui');
-      }
-    },
-    {
-      label: 'Node Info',
-      click: () => {
-        shell.openExternal('https://node.localhost');
       }
     },
     {

@@ -8,6 +8,7 @@ import { setupRoutes } from '../utils/routes.js';
 import { setupRpcRoutes } from '../utils/rpc-routes.js';
 import { HeliosClient } from '../ethereum/helios-client.js';
 import { IPFSManager } from '../ipfs/ipfs-manager.js';
+import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache } from '../utils/cache-api.js';
 
 /**
  * LocalNodeServer - Manages the Express server, HTTPS, Helios client, and ENS resolution
@@ -28,6 +29,9 @@ export class LocalNodeServer {
     
     // RPC app for Ethereum JSON-RPC
     this.rpcApp = express();
+    
+    // Node cache management app
+    this.nodeCacheApp = express();
     
     // IPFS Manager (uses standard ports since we only start when they're free)
     this.ipfsManager = new IPFSManager();
@@ -62,6 +66,16 @@ export class LocalNodeServer {
       console.log(`[RPC] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
       next();
     });
+    
+    // Middleware for node cache management app
+    this.nodeCacheApp.use(express.json());
+    this.nodeCacheApp.use(express.urlencoded({ extended: true }));
+    
+    // Logging middleware for cache app
+    this.nodeCacheApp.use((req, res, next) => {
+      console.log(`[CACHE] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
+      next();
+    });
   }
 
   setupRoutes() {
@@ -70,6 +84,78 @@ export class LocalNodeServer {
     
     // Setup RPC routes
     setupRpcRoutes(this.rpcApp, this.heliosClient);
+    
+    // Setup node cache management routes
+    this.setupNodeCacheRoutes();
+  }
+
+  setupNodeCacheRoutes() {
+    // Serve the node cache management page
+    this.nodeCacheApp.get('/', (req, res) => {
+      const indexPath = path.join(process.cwd(), 'src', 'renderer', 'node-cache', 'index.html');
+      res.sendFile(indexPath);
+    });
+    
+    // API endpoint to get all cached domains (fast - just domain + CID)
+    this.nodeCacheApp.get('/api/cached-domains', (req, res) => {
+      try {
+        console.log('[CACHE API] Getting cached domains...');
+        const domains = getAllCachedDomains();
+        console.log(`[CACHE API] Returning ${domains.length} domains`);
+        res.json(domains);
+      } catch (error) {
+        console.error('[CACHE API] Error getting cached domains:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // API endpoint to get favicon for a specific domain
+    this.nodeCacheApp.get('/api/domain-favicon', async (req, res) => {
+      const domain = req.query.domain;
+      if (!domain) {
+        return res.status(400).json({ error: 'Domain parameter is required' });
+      }
+      
+      try {
+        const favicon = await getDomainFavicon(domain, this.ipfsManager);
+        res.json({ favicon });
+      } catch (error) {
+        console.error(`[CACHE API] Error getting favicon for ${domain}:`, error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // API endpoint to get sizes for a specific domain
+    this.nodeCacheApp.get('/api/domain-sizes', async (req, res) => {
+      const domain = req.query.domain;
+      if (!domain) {
+        return res.status(400).json({ error: 'Domain parameter is required' });
+      }
+      
+      try {
+        const sizes = await getDomainSizes(domain, this.ipfsManager);
+        res.json(sizes);
+      } catch (error) {
+        console.error(`[CACHE API] Error getting sizes for ${domain}:`, error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // API endpoint to clear cache for a domain
+    this.nodeCacheApp.post('/api/clear-cache', async (req, res) => {
+      const domain = req.query.domain;
+      if (!domain) {
+        return res.status(400).json({ error: 'Domain parameter is required' });
+      }
+      
+      try {
+        const success = await clearDomainCache(domain);
+        res.json({ success });
+      } catch (error) {
+        console.error('Error clearing cache:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
   }
 
   async start() {
@@ -96,18 +182,23 @@ export class LocalNodeServer {
       // Create a router to handle both ENS and RPC requests on HTTPS
       const combinedApp = express();
       
-      // Route based on host header
-      combinedApp.use((req, res, next) => {
-        const host = req.headers.host || '';
-        
-        // Check if this is an RPC request (ethereum.node.localhost)
-        if (host.includes('ethereum.node.')) {
-          return this.rpcApp(req, res, next);
-        }
-        
-        // Otherwise, handle as ENS proxy
-        return this.app(req, res, next);
-      });
+    // Route based on host header
+    combinedApp.use((req, res, next) => {
+      const host = req.headers.host || '';
+      
+      // Check if this is an RPC request (ethereum.node.localhost)
+      if (host.includes('ethereum.node.')) {
+        return this.rpcApp(req, res, next);
+      }
+      
+      // Check if this is a node cache management request (node.localhost)
+      if (host.includes('node.localhost')) {
+        return this.nodeCacheApp(req, res, next);
+      }
+      
+      // Otherwise, handle as ENS proxy
+      return this.app(req, res, next);
+    });
 
       // Start HTTPS server on port 443 (handles both ENS and RPC requests)
       this.httpsServer = createHttpsServer(httpsOptions, combinedApp);
@@ -188,6 +279,7 @@ export class LocalNodeServer {
     // Recreate the apps with new routes
     this.app = express();
     this.rpcApp = express();
+    this.nodeCacheApp = express();
     this.setupMiddleware();
     this.setupRoutes();
     

@@ -1,5 +1,7 @@
 
 - [ ] node info page
-- [ ] expose ethereum rpc
+- [ ] last visit, add on load and on node page
+- [ ] cert should work for subdomains
+- [x] expose ethereum rpc
 - [x] ship with kubo
-- [ ] install certs in keychain
+- [x] install certs in keychain

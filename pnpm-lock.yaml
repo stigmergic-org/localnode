@@ -26,15 +26,24 @@ importers:
       ipfsd-ctl:
         specifier: ^15.0.2
         version: 15.0.2(undici@7.16.0)
+      it-all:
+        specifier: ^3.0.9
+        version: 3.0.9
       kubo:
         specifier: ^0.38.1
         version: 0.38.1
       kubo-rpc-client:
         specifier: ^5.4.0
         version: 5.4.0(undici@7.16.0)
+      multiformats:
+        specifier: ^13.4.1
+        version: 13.4.1
       node-forge:
         specifier: ^1.3.1
         version: 1.3.1
+      uint8arrays:
+        specifier: ^5.1.0
+        version: 5.1.0
       viem:
         specifier: ^2.0.0
         version: 2.37.12(typescript@5.9.3)

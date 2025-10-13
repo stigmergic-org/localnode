@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
+  <title>Local Node - Cache Management</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      line-height: 1.6;
+    }
+    
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    
+    .header {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .header h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 8px;
+    }
+    
+    .header p {
+      color: #7f8c8d;
+      font-size: 16px;
+    }
+    
+    .stats {
+      display: flex;
+      gap: 16px;
+      margin-top: 16px;
+    }
+    
+    .stat {
+      background: #ecf0f1;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+    }
+    
+    .stat-value {
+      font-weight: 600;
+      color: #2c3e50;
+    }
+    
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: #7f8c8d;
+    }
+    
+    .error {
+      background: #e74c3c;
+      color: white;
+      padding: 16px;
+      border-radius: 6px;
+      margin-bottom: 24px;
+    }
+    
+    .domains-table {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    
+    .domains-table table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    
+    .domains-table th:nth-child(1) {
+      width: 50%;
+    }
+    
+    .domains-table th:nth-child(2),
+    .domains-table th:nth-child(3) {
+      width: 12%;
+    }
+    
+    .domains-table th:nth-child(4) {
+      width: 26%;
+    }
+    
+    .domains-table th {
+      background: #f8f9fa;
+      padding: 16px;
+      text-align: left;
+      font-size: 14px;
+      font-weight: 600;
+      color: #2c3e50;
+      border-bottom: 2px solid #e9ecef;
+    }
+    
+    .domains-table td {
+      padding: 16px;
+      border-bottom: 1px solid #e9ecef;
+      vertical-align: middle;
+    }
+    
+    .domains-table tr:hover {
+      background: #f8f9fa;
+    }
+    
+    .domains-table tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .website-cell {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    
+    .domain-favicon {
+      width: 32px;
+      height: 32px;
+      border-radius: 4px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #ecf0f1;
+      color: #7f8c8d;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .domain-favicon img {
+      width: 100%;
+      height: 100%;
+      border-radius: 4px;
+    }
+    
+    .domain-info {
+      flex: 1;
+      min-width: 0;
+    }
+    
+    .domain-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    
+    .domain-name a {
+      color: #2c3e50;
+      text-decoration: none;
+    }
+    
+    .domain-name a:hover {
+      color: #3498db;
+      text-decoration: underline;
+    }
+    
+    .domain-favicon a {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      height: 100%;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+    }
+    
+    .domain-favicon a img {
+      pointer-events: none;
+    }
+    
+    .domain-cid {
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 11px;
+      color: #7f8c8d;
+      word-break: break-all;
+    }
+    
+    .size-cell {
+      font-size: 14px;
+      font-weight: 500;
+      color: #2c3e50;
+    }
+    
+    .domain-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    
+    .btn {
+      padding: 6px;
+      border: 2px solid transparent;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 32px;
+      min-height: 32px;
+      position: relative;
+    }
+    
+    .btn:hover::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      white-space: nowrap;
+      z-index: 1000;
+      margin-bottom: 4px;
+    }
+    
+    .btn:hover::before {
+      content: '';
+      position: absolute;
+      bottom: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 0;
+      height: 0;
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 4px solid rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+    }
+    
+    .btn-primary {
+      background: transparent;
+      border: 2px solid #3498db;
+      color: #3498db;
+    }
+    
+    .btn-primary:hover {
+      background: #3498db;
+      color: white;
+    }
+    
+    .btn-danger {
+      background: transparent;
+      border: 2px solid #e74c3c;
+      color: #e74c3c;
+    }
+    
+    .btn-danger:hover {
+      background: #e74c3c;
+      color: white;
+    }
+    
+    .btn-success {
+      background: transparent;
+      border: 2px solid #27ae60;
+      color: #27ae60;
+    }
+    
+    .btn-success:hover {
+      background: #27ae60;
+      color: white;
+    }
+    
+    .btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+    
+    .empty-state {
+      text-align: center;
+      padding: 60px 20px;
+      color: #7f8c8d;
+    }
+    
+    .empty-state h3 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    
+    /* Dark mode */
+    @media (prefers-color-scheme: dark) {
+      body {
+        background: #1a1a1a;
+        color: #e1e1e1;
+      }
+      
+      .header, .domains-table {
+        background: #2a2a2a;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      }
+      
+      .header h1 {
+        color: #e1e1e1;
+      }
+      
+      .header p {
+        color: #b1b1b1;
+      }
+      
+      .stat {
+        background: #3a3a3a;
+      }
+      
+      .stat-value {
+        color: #e1e1e1;
+      }
+      
+      .domains-table th {
+        background: #3a3a3a;
+        color: #e1e1e1;
+        border-bottom-color: #4a4a4a;
+      }
+      
+      .domains-table td {
+        border-bottom-color: #4a4a4a;
+      }
+      
+      .domains-table tr:hover {
+        background: #3a3a3a;
+      }
+      
+      .domain-name a {
+        color: #e1e1e1;
+      }
+      
+      .domain-name a:hover {
+        color: #5dade2;
+      }
+      
+      .domain-cid {
+        color: #b1b1b1;
+      }
+      
+      .size-cell {
+        color: #e1e1e1;
+      }
+      
+      .domain-favicon {
+        background: #3a3a3a;
+        color: #b1b1b1;
+      }
+      
+      .btn:hover::after {
+        background: rgba(255, 255, 255, 0.9);
+        color: #2a2a2a;
+      }
+      
+      .btn:hover::before {
+        border-top-color: rgba(255, 255, 255, 0.9);
+      }
+      
+      /* Dark mode button adjustments */
+      .btn-primary {
+        border-color: #5dade2;
+        color: #5dade2;
+      }
+      
+      .btn-primary:hover {
+        background: #5dade2;
+        color: #2a2a2a;
+      }
+      
+      .btn-danger {
+        border-color: #ec7063;
+        color: #ec7063;
+      }
+      
+      .btn-danger:hover {
+        background: #ec7063;
+        color: #2a2a2a;
+      }
+      
+      .btn-success {
+        border-color: #58d68d;
+        color: #58d68d;
+      }
+      
+      .btn-success:hover {
+        background: #58d68d;
+        color: #2a2a2a;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Local Node Cache</h1>
+      <p>Manage your cached ENS domains and IPFS content</p>
+      <div class="stats">
+        <div class="stat">
+          <span class="stat-value" id="domainCount">-</span> domains cached
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="totalSize">-</span> total size
+        </div>
+      </div>
+    </div>
+    
+    <div id="error" class="error" style="display: none;"></div>
+    
+    <div id="loading" class="loading">
+      <p>Loading cached domains...</p>
+    </div>
+    
+    <div id="content" style="display: none;">
+      <div id="domainsTable" class="domains-table">
+        <table>
+          <thead>
+            <tr>
+              <th>Website</th>
+              <th>Cache Size</th>
+              <th>Total Size</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="domainsTableBody">
+          </tbody>
+        </table>
+      </div>
+      
+      <div id="emptyState" class="empty-state" style="display: none;">
+        <h3>No cached domains</h3>
+        <p>Visit some ENS domains to see them cached here</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let domains = [];
+    let isLoading = false;
+    
+    // DOM elements
+    const errorEl = document.getElementById('error');
+    const loadingEl = document.getElementById('loading');
+    const contentEl = document.getElementById('content');
+    const domainsTableEl = document.getElementById('domainsTable');
+    const domainsTableBodyEl = document.getElementById('domainsTableBody');
+    const emptyStateEl = document.getElementById('emptyState');
+    const domainCountEl = document.getElementById('domainCount');
+    const totalSizeEl = document.getElementById('totalSize');
+    
+    // Load domains on page load
+    document.addEventListener('DOMContentLoaded', loadDomains);
+    
+    async function loadDomains() {
+      if (isLoading) return;
+      
+      isLoading = true;
+      showError(null);
+      loadingEl.style.display = 'block';
+      contentEl.style.display = 'none';
+      
+      try {
+        // Step 1: Fetch basic domain list (fast!)
+        const response = await fetch('/api/cached-domains');
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        domains = await response.json();
+        
+        // Show domains immediately with placeholders
+        renderDomains();
+        updateStats();
+        
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+        
+        // Step 2: Fetch details for each domain in parallel
+        const detailPromises = domains.map(async (domain) => {
+          // Fetch favicon and sizes in parallel for this domain
+          const [faviconResult, sizesResult] = await Promise.allSettled([
+            fetch(`/api/domain-favicon?domain=${encodeURIComponent(domain.domain)}`).then(r => r.json()),
+            fetch(`/api/domain-sizes?domain=${encodeURIComponent(domain.domain)}`).then(r => r.json())
+          ]);
+          
+          // Update domain object
+          if (faviconResult.status === 'fulfilled') {
+            domain.favicon = faviconResult.value.favicon;
+          }
+          
+          if (sizesResult.status === 'fulfilled') {
+            domain.totalSize = sizesResult.value.totalSize;
+            domain.localSize = sizesResult.value.localSize;
+          }
+          
+          // Re-render this specific domain row
+          renderDomainRow(domain);
+          updateStats();
+        });
+        
+        // Wait for all details to load (but don't block UI)
+        await Promise.all(detailPromises);
+        
+      } catch (error) {
+        console.error('Error loading domains:', error);
+        showError(`Failed to load cached domains: ${error.message}`);
+        loadingEl.style.display = 'none';
+      } finally {
+        isLoading = false;
+      }
+    }
+    
+    function renderDomains() {
+      if (domains.length === 0) {
+        domainsTableEl.style.display = 'none';
+        emptyStateEl.style.display = 'block';
+        return;
+      }
+      
+      domainsTableEl.style.display = 'block';
+      emptyStateEl.style.display = 'none';
+      
+      // Sort domains by domain name
+      const sortedDomains = [...domains].sort((a, b) => a.domain.localeCompare(b.domain));
+      
+      // Render all domains with placeholders
+      domainsTableBodyEl.innerHTML = sortedDomains.map(domain => 
+        getDomainRowHTML(domain)
+      ).join('');
+    }
+    
+    function renderDomainRow(domain) {
+      // Find row by data attribute
+      const row = domainsTableBodyEl.querySelector(`tr[data-domain="${domain.domain}"]`);
+      if (!row) return;
+      
+      // Update the row's HTML directly
+      row.outerHTML = getDomainRowHTML(domain);
+    }
+    
+    function getDomainRowHTML(domain) {
+      return `
+        <tr data-domain="${domain.domain}">
+          <td>
+            <div class="website-cell">
+              <div class="domain-favicon" title="Visit ${domain.domain}">
+                <a href="https://${domain.domain}.localhost" target="_blank">
+                  ${domain.favicon 
+                    ? `<img src="${domain.favicon}" alt="${domain.domain} favicon" onerror="this.parentElement.parentElement.innerHTML='${domain.domain.charAt(0).toUpperCase()}'">`
+                    : domain.domain.charAt(0).toUpperCase()
+                  }
+                </a>
+              </div>
+              <div class="domain-info">
+                <div class="domain-name">
+                  <a href="https://${domain.domain}.localhost" target="_blank" title="Visit ${domain.domain}">
+                    ${domain.domain}
+                  </a>
+                </div>
+                <div class="domain-cid">
+                  ${domain.cid}
+                </div>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="size-cell">${domain.localSize || '...'}</div>
+          </td>
+          <td>
+            <div class="size-cell">${domain.totalSize || '...'}</div>
+          </td>
+          <td>
+            <div class="domain-actions">
+              <a href="http://localhost:5001/webui/#/explore/${domain.cid}" target="_blank" class="btn btn-primary" data-tooltip="Inspect Files">
+                🔍
+              </a>
+              
+              <button class="btn btn-danger" onclick="clearCache('${domain.domain}')" data-tooltip="Delete Cache">
+                🗑️
+              </button>
+              
+              <button class="btn btn-success" onclick="autoSeed('${domain.domain}')" data-tooltip="Auto-seed">
+                🌱
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+    
+    function updateStats() {
+      domainCountEl.textContent = domains.length;
+      
+      // Calculate total size (approximate)
+      let totalBytes = 0;
+      let hasValidSizes = false;
+      
+      domains.forEach(domain => {
+        if (domain.totalSize && domain.totalSize !== 'Unknown' && domain.totalSize !== 'Error') {
+          const bytes = parseSize(domain.totalSize);
+          if (bytes > 0) {
+            totalBytes += bytes;
+            hasValidSizes = true;
+          }
+        }
+      });
+      
+      totalSizeEl.textContent = hasValidSizes ? formatBytes(totalBytes) : 'Unknown';
+    }
+    
+    async function clearCache(domain) {
+      if (!confirm(`Are you sure you want to clear the cache for ${domain}?`)) {
+        return;
+      }
+      
+      try {
+        const response = await fetch(`/api/clear-cache?domain=${encodeURIComponent(domain)}`, {
+          method: 'POST'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+          // Reload domains
+          await loadDomains();
+        } else {
+          throw new Error(result.error || 'Failed to clear cache');
+        }
+      } catch (error) {
+        console.error('Error clearing cache:', error);
+        showError(`Failed to clear cache for ${domain}: ${error.message}`);
+      }
+    }
+    
+    async function autoSeed(domain) {
+      // Placeholder function - does nothing for now
+      console.log(`Auto-seed requested for ${domain} (not implemented yet)`);
+      
+      // Show a temporary message
+      const button = event.target;
+      const originalText = button.textContent;
+      button.textContent = '⏳';
+      button.disabled = true;
+      
+      setTimeout(() => {
+        button.textContent = originalText;
+        button.disabled = false;
+        console.log(`Auto-seed placeholder completed for ${domain}`);
+      }, 1000);
+    }
+    
+    function showError(message) {
+      if (message) {
+        errorEl.textContent = message;
+        errorEl.style.display = 'block';
+      } else {
+        errorEl.style.display = 'none';
+      }
+    }
+    
+    function formatDate(isoString) {
+      const date = new Date(isoString);
+      const now = new Date();
+      const diffMs = now - date;
+      const diffMins = Math.floor(diffMs / 60000);
+      const diffHours = Math.floor(diffMs / 3600000);
+      const diffDays = Math.floor(diffMs / 86400000);
+      
+      if (diffMins < 1) return 'Just now';
+      if (diffMins < 60) return `${diffMins}m ago`;
+      if (diffHours < 24) return `${diffHours}h ago`;
+      if (diffDays < 7) return `${diffDays}d ago`;
+      
+      return date.toLocaleDateString();
+    }
+    
+    function parseSize(sizeStr) {
+      const match = sizeStr.match(/^([\d.]+)\s*([KMGT]?B)$/i);
+      if (!match) return 0;
+      
+      const [, value, unit] = match;
+      const bytes = parseFloat(value);
+      
+      switch (unit.toUpperCase()) {
+        case 'TB': return bytes * 1024 * 1024 * 1024 * 1024;
+        case 'GB': return bytes * 1024 * 1024 * 1024;
+        case 'MB': return bytes * 1024 * 1024;
+        case 'KB': return bytes * 1024;
+        default: return bytes;
+      }
+    }
+    
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 B';
+      
+      const k = 1024;
+      const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+  </script>
+</body>
+</html>
