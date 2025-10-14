@@ -8,7 +8,9 @@ import { setupRoutes } from '../utils/routes.js';
 import { setupRpcRoutes } from '../utils/rpc-routes.js';
 import { HeliosClient } from '../ethereum/helios-client.js';
 import { IPFSManager } from '../ipfs/ipfs-manager.js';
-import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache, enableAutoSeeding, disableAutoSeeding } from '../utils/cache-api.js';
+import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache, enableAutoSeeding, disableAutoSeeding, isAutoSeedingEnabled } from '../utils/cache-api.js';
+import { saveCidIfChanged } from '../utils/cache-manager.js';
+import { CID } from 'multiformats/cid';
 
 /**
  * Format bytes into human readable format
@@ -58,6 +60,8 @@ export class LocalNodeServer {
     this.ensResolver = new ENSResolver(this.heliosClient);
     
     this.shutdownHandlersRegistered = false;
+    this.autoSeedingInterval = null;
+    this.autoSeedingIntervalMs = (options.autoSeedingIntervalMinutes || 10) * 60 * 1000; // Default 10 minutes
     
     this.setupMiddleware();
     // Note: setupRoutes() is called in start() after IPFS is initialized
@@ -224,6 +228,129 @@ export class LocalNodeServer {
     });
   }
 
+  /**
+   * Start the auto-seeding update loop
+   */
+  startAutoSeedingLoop() {
+    if (this.autoSeedingInterval) {
+      return; // Already running
+    }
+    
+    console.log(`Starting auto-seeding update loop (every ${this.autoSeedingIntervalMs / 60000} minutes)`);
+    
+    // Run immediately, then on interval
+    this.checkAutoSeedingUpdates();
+    
+    this.autoSeedingInterval = setInterval(() => {
+      this.checkAutoSeedingUpdates();
+    }, this.autoSeedingIntervalMs);
+  }
+
+  /**
+   * Stop the auto-seeding update loop
+   */
+  stopAutoSeedingLoop() {
+    if (this.autoSeedingInterval) {
+      clearInterval(this.autoSeedingInterval);
+      this.autoSeedingInterval = null;
+      console.log('Stopped auto-seeding update loop');
+    }
+  }
+
+  /**
+   * Check for updates on all auto-seeding domains
+   */
+  async checkAutoSeedingUpdates() {
+    try {
+      console.log('[Auto-Seeding] Checking for updates...');
+      
+      // Get all cached domains
+      const domains = getAllCachedDomains();
+      
+      // Filter to only auto-seeding domains
+      const autoSeedingDomains = domains.filter(d => d.autoSeeding);
+      
+      if (autoSeedingDomains.length === 0) {
+        console.log('[Auto-Seeding] No domains to check');
+        return;
+      }
+      
+      console.log(`[Auto-Seeding] Checking ${autoSeedingDomains.length} domains for updates`);
+      
+      // Check each domain for updates
+      for (const domain of autoSeedingDomains) {
+        try {
+          await this.checkDomainUpdate(domain);
+        } catch (error) {
+          console.error(`[Auto-Seeding] Error checking ${domain.domain}:`, error.message);
+        }
+      }
+      
+      console.log('[Auto-Seeding] Update check completed');
+    } catch (error) {
+      console.error('[Auto-Seeding] Error in update check:', error.message);
+    }
+  }
+
+  /**
+   * Check for updates on a specific domain
+   */
+  async checkDomainUpdate(cachedDomain) {
+    try {
+      const domain = cachedDomain.domain;
+      const oldCid = cachedDomain.cid;
+      
+      // Resolve current CID from ENS
+      const newCid = await this.ensResolver.resolveENS(domain);
+      
+      // Parse CIDs for proper comparison
+      const oldCidObj = CID.parse(oldCid);
+      const newCidObj = CID.parse(newCid);
+      
+      // Use CID.equals() for proper comparison
+      if (oldCidObj.equals(newCidObj)) {
+        console.log(`[Auto-Seeding] ${domain} is up to date (${newCid.substring(0, 20)}...)`);
+        return;
+      }
+      
+      console.log(`[Auto-Seeding] ${domain} has update: ${oldCid.substring(0, 20)}... → ${newCid.substring(0, 20)}...`);
+      
+      // Update the domain
+      await this.updateAutoSeedingDomain(domain, newCid);
+      
+    } catch (error) {
+      console.error(`[Auto-Seeding] Error checking ${cachedDomain.domain}:`, error.message);
+    }
+  }
+
+  /**
+   * Update an auto-seeding domain with new CID
+   */
+  async updateAutoSeedingDomain(domain, newCid) {
+    try {
+      const client = this.ipfsManager.getClient();
+      
+      // 1. Add to MFS cache
+      const mfsPath = `/localnode-cache/${newCid}`;
+      await client.files.cp(`/ipfs/${newCid}`, mfsPath, { parents: true });
+      console.log(`[Auto-Seeding] Added ${newCid} to MFS cache`);
+      
+      // 2. Pin recursively
+      await client.pin.add(newCid, { recursive: true });
+      console.log(`[Auto-Seeding] Pinned ${newCid} recursively`);
+      
+      // 3. Add to filesystem cache
+      await saveCidIfChanged(domain, newCid);
+      console.log(`[Auto-Seeding] Updated cache for ${domain}`);
+      
+      console.log(`[Auto-Seeding] Successfully updated ${domain} to ${newCid.substring(0, 20)}...`);
+      
+    } catch (error) {
+      console.error(`[Auto-Seeding] Error updating ${domain}:`, error.message);
+      throw error;
+    }
+  }
+
   async start() {
     try {
       // Initialize IPFS (check for existing or start managed instance)
@@ -285,6 +412,9 @@ export class LocalNodeServer {
         // Initialize ENS resolver with Helios transport once synced
         this.ensResolver.init();
         console.log('✅ Server is now fully ready to handle ENS and RPC requests\n');
+        
+        // Start auto-seeding update loop once ENS resolver is ready
+        this.startAutoSeedingLoop();
       }).catch(error => {
         console.error('❌ Failed to start Helios client:', error);
         console.error('Server will continue to run but ENS resolution and RPC will not work\n');
@@ -311,7 +441,10 @@ export class LocalNodeServer {
 
   async stop() {
     return new Promise(async (resolve) => {
-      // Stop Helios client first
+      // Stop auto-seeding loop first
+      this.stopAutoSeedingLoop();
+      
+      // Stop Helios client
       if (this.heliosClient) {
         await this.heliosClient.stop();
       }

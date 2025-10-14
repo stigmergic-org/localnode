@@ -13,6 +13,8 @@ const DEFAULT_CONFIG = {
   // Server configuration
   domain: 'localhost',
   port: 443,
+  // Auto-seeding configuration
+  autoSeedingIntervalMinutes: 10,
 };
 
 // Ensure config directory exists
