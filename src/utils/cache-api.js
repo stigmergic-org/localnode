@@ -3,6 +3,7 @@ import path from 'path';
 import { getCacheDir } from './config.js';
 import { getLatestCid } from './cache-manager.js';
 import { toString } from 'uint8arrays';
+import { createLogger } from './logger.js';
 
 /**
  * Cache API utilities for the node.localhost management interface
@@ -31,6 +32,8 @@ export function isAutoSeedingEnabled(domain) {
  * @returns {Promise<boolean>} True if enabled successfully
  */
 export async function enableAutoSeeding(domain, ipfsManager) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cacheDir = getCacheDir();
     const domainDir = path.join(cacheDir, domain);
@@ -51,21 +54,21 @@ export async function enableAutoSeeding(domain, ipfsManager) {
     if (ipfsManager) {
       try {
         const client = ipfsManager.getClient();
-        console.log(`Pinning CID ${cid} for auto-seeding domain: ${domain}`);
+        logger.debug(`Pinning CID ${cid} for auto-seeding domain: ${domain}`);
         await client.pin.add(cid, { recursive: true });
-        console.log(`Successfully pinned CID ${cid} for domain: ${domain}`);
+        logger.debug(`Successfully pinned CID ${cid} for domain: ${domain}`);
       } catch (pinError) {
-        console.error(`Failed to pin CID ${cid} for domain ${domain}:`, pinError.message);
+        logger.error(`Failed to pin CID ${cid} for domain ${domain}`, pinError);
         throw new Error(`Failed to pin content: ${pinError.message}`);
       }
     }
     
     // Create auto-seeding file
     fs.writeFileSync(autoSeedFile, '');
-    console.log(`Enabled auto-seeding for domain: ${domain}`);
+    logger.info(`Enabled auto-seeding for domain: ${domain}`);
     return true;
   } catch (error) {
-    console.error(`Error enabling auto-seeding for ${domain}:`, error.message);
+    logger.error(`Error enabling auto-seeding for ${domain}`, error);
     throw error;
   }
 }
@@ -77,6 +80,8 @@ export async function enableAutoSeeding(domain, ipfsManager) {
  * @returns {Promise<boolean>} True if disabled successfully
  */
 export async function disableAutoSeeding(domain, ipfsManager) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cacheDir = getCacheDir();
     const domainDir = path.join(cacheDir, domain);
@@ -87,25 +92,25 @@ export async function disableAutoSeeding(domain, ipfsManager) {
     
     if (fs.existsSync(autoSeedFile)) {
       fs.unlinkSync(autoSeedFile);
-      console.log(`Disabled auto-seeding for domain: ${domain}`);
+      logger.info(`Disabled auto-seeding for domain: ${domain}`);
     }
     
     // Unpin the CID if we have it and IPFS manager
     if (cid && ipfsManager) {
       try {
         const client = ipfsManager.getClient();
-        console.log(`Unpinning CID ${cid} for domain: ${domain}`);
+        logger.debug(`Unpinning CID ${cid} for domain: ${domain}`);
         await client.pin.rm(cid);
-        console.log(`Successfully unpinned CID ${cid} for domain: ${domain}`);
+        logger.debug(`Successfully unpinned CID ${cid} for domain: ${domain}`);
       } catch (pinError) {
-        console.warn(`Failed to unpin CID ${cid} for domain ${domain}:`, pinError.message);
+        logger.warn(`Failed to unpin CID ${cid} for domain ${domain}`, pinError);
         // Don't throw error for unpin failures - the file is already removed
       }
     }
     
     return true;
   } catch (error) {
-    console.error(`Error disabling auto-seeding for ${domain}:`, error.message);
+    logger.error(`Error disabling auto-seeding for ${domain}`, error);
     throw error;
   }
 }
@@ -115,6 +120,8 @@ export async function disableAutoSeeding(domain, ipfsManager) {
  * @returns {Promise<Array>} Array of domain objects with domain, cid, lastCached, autoSeeding
  */
 export function getAllCachedDomains() {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cacheDir = getCacheDir();
     
@@ -153,13 +160,13 @@ export function getAllCachedDomains() {
           autoSeeding
         });
       } catch (error) {
-        console.error(`Error processing domain ${domain}:`, error.message);
+        logger.error(`Error processing domain ${domain}`, error);
       }
     }
     
     return domains.sort((a, b) => a.domain.localeCompare(b.domain));
   } catch (error) {
-    console.error('Error getting cached domains:', error);
+    logger.error('Error getting cached domains', error);
     throw error;
   }
 }
@@ -171,6 +178,8 @@ export function getAllCachedDomains() {
  * @returns {Promise<string|null>} Base64 encoded favicon or null
  */
 export async function getDomainFavicon(domain, ipfsManager) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cid = getLatestCid(domain);
     if (!cid) {
@@ -179,7 +188,7 @@ export async function getDomainFavicon(domain, ipfsManager) {
     
     return await getFaviconFromCache(domain, cid, ipfsManager);
   } catch (error) {
-    console.error(`Error getting favicon for ${domain}:`, error.message);
+    logger.error(`Error getting favicon for ${domain}`, error);
     return null;
   }
 }
@@ -191,6 +200,8 @@ export async function getDomainFavicon(domain, ipfsManager) {
  * @returns {Promise<{totalSize: string, localSize: string}>}
  */
 export async function getDomainSizes(domain, ipfsManager) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cid = getLatestCid(domain);
     if (!cid) {
@@ -199,7 +210,7 @@ export async function getDomainSizes(domain, ipfsManager) {
     
     return await getCidSizes(cid, ipfsManager);
   } catch (error) {
-    console.error(`Error getting sizes for ${domain}:`, error.message);
+    logger.error(`Error getting sizes for ${domain}`, error);
     return { totalSize: 'Unknown', localSize: 'Unknown' };
   }
 }
@@ -212,6 +223,8 @@ export async function getDomainSizes(domain, ipfsManager) {
  * @returns {Promise<boolean>} True if cleared successfully
  */
 export async function clearDomainCache(domain, ipfsManager = null) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const cacheDir = getCacheDir();
     const domainDir = path.join(cacheDir, domain);
@@ -231,7 +244,7 @@ export async function clearDomainCache(domain, ipfsManager = null) {
             cids.add(cidContent);
           }
         } catch (error) {
-          console.warn(`Could not read CID from ${file}:`, error.message);
+          logger.warn(`Could not read CID from ${file}`, error);
         }
       }
     }
@@ -244,7 +257,7 @@ export async function clearDomainCache(domain, ipfsManager = null) {
     // Remove the domain directory
     fs.rmdirSync(domainDir);
     
-    console.log(`Cleared cache for domain: ${domain} (${cids.size} CIDs)`);
+    logger.info(`Cleared cache for domain: ${domain} (${cids.size} CIDs)`);
     
     // Remove all CIDs from MFS if we have IPFS manager
     if (cids.size > 0 && ipfsManager) {
@@ -253,17 +266,17 @@ export async function clearDomainCache(domain, ipfsManager = null) {
         try {
           const mfsPath = `/localnode-cache/${cid}`;
           await client.files.rm(mfsPath, { recursive: true });
-          console.log(`Removed ${cid} from MFS cache`);
+          logger.debug(`Removed ${cid} from MFS cache`);
         } catch (error) {
           // Log but don't fail if MFS removal fails (might not exist)
-          console.warn(`Could not remove ${cid} from MFS: ${error.message}`);
+          logger.warn(`Could not remove ${cid} from MFS`, error);
         }
       }
     }
     
     return true;
   } catch (error) {
-    console.error(`Error clearing cache for ${domain}:`, error.message);
+    logger.error(`Error clearing cache for ${domain}`, error);
     throw error;
   }
 }
@@ -275,6 +288,8 @@ export async function clearDomainCache(domain, ipfsManager = null) {
  * @returns {Promise<{totalSize: string, localSize: string}>}
  */
 export async function getCidSizes(cid, ipfsManager) {
+  const logger = createLogger('CacheAPI');
+  
   try {
     const client = ipfsManager.getClient();
     const mfsPath = `/localnode-cache/${cid}`;
@@ -293,7 +308,7 @@ export async function getCidSizes(cid, ipfsManager) {
       localSize: formatBytes(localSize)
     };
   } catch (error) {
-    console.warn(`[getCidSizes] Error:`, error.message);
+    logger.warn('Error getting CID sizes', error);
     return { totalSize: 'Unknown', localSize: 'Unknown' };
   }
 }
@@ -339,7 +354,7 @@ export async function getFaviconFromCache(domain, cid, ipfsManager) {
         }
       }
     } catch (error) {
-      console.warn(`Could not stream HTML for ${domain}:`, error.message);
+      logger.warn(`Could not stream HTML for ${domain}`, error);
       return null;
     }
     
@@ -362,7 +377,7 @@ export async function getFaviconFromCache(domain, cid, ipfsManager) {
     
     return faviconUrl;
   } catch (error) {
-    console.error(`Error getting favicon for ${domain}:`, error.message);
+    logger.error(`Error getting favicon for ${domain}`, error);
     return null;
   }
 }

@@ -3,12 +3,15 @@
  * Thin wrapper around the Helios client request method
  */
 
+import { createLogger } from './logger.js';
+
 /**
  * Setup RPC routes for Ethereum JSON-RPC API
  * @param {Express} app - Express application instance
  * @param {HeliosClient} heliosClient - Helios client instance
  */
 export function setupRpcRoutes(app, heliosClient) {
+  const logger = createLogger('RPC');
   // Health check endpoint (non-standard, but useful for monitoring)
   app.get('/health', (req, res) => {
     res.json({
@@ -40,7 +43,7 @@ export function setupRpcRoutes(app, heliosClient) {
           );
         }
 
-        console.log(`[RPC] Batch request with ${req.body.length} calls`);
+        logger.debug(`Batch request with ${req.body.length} calls`);
 
         const results = await Promise.all(
           req.body.map(async (request) => {
@@ -80,7 +83,7 @@ export function setupRpcRoutes(app, heliosClient) {
 
         return res.json(results);
       } catch (error) {
-        console.error('[RPC] Batch error:', error.message);
+        logger.error('Batch error', error);
         return res.status(500).json({
           jsonrpc: '2.0',
           error: {
@@ -132,7 +135,7 @@ export function setupRpcRoutes(app, heliosClient) {
         });
       }
 
-      console.log(`[RPC] ${method}`, params ? `(${JSON.stringify(params).slice(0, 100)}...)` : '');
+      logger.debug(`${method}`, params ? `(${JSON.stringify(params).slice(0, 100)}...)` : '');
 
       // Forward request to Helios client
       const result = await heliosClient.request(method, params || []);
@@ -145,7 +148,7 @@ export function setupRpcRoutes(app, heliosClient) {
       });
 
     } catch (error) {
-      console.error('[RPC] Error:', error.message);
+      logger.error('RPC Error', error);
       
       // Return JSON-RPC error response
       res.status(200).json({

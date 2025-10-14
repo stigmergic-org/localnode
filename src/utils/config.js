@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { createLogger } from './logger.js';
 
 const CONFIG_DIR = path.join(os.homedir(), '.localnode');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
@@ -67,19 +68,23 @@ export function loadConfig() {
     return { ...DEFAULT_CONFIG };
   }
   
+  const logger = createLogger('Config');
+  
   try {
     const data = fs.readFileSync(CONFIG_FILE, 'utf8');
     const config = JSON.parse(data);
     // Merge with defaults in case new fields were added
     return { ...DEFAULT_CONFIG, ...config };
   } catch (error) {
-    console.error('Error loading config:', error);
+    logger.error('Error loading config', error);
     return { ...DEFAULT_CONFIG };
   }
 }
 
 // Save configuration
 export function saveConfig(config) {
+  const logger = createLogger('Config');
+  
   ensureConfigDir();
   
   try {
@@ -87,7 +92,7 @@ export function saveConfig(config) {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(configToSave, null, 2), 'utf8');
     return true;
   } catch (error) {
-    console.error('Error saving config:', error);
+    logger.error('Error saving config', error);
     return false;
   }
 }

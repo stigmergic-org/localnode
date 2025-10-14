@@ -1,4 +1,5 @@
 import { createHeliosProvider } from '@a16z/helios';
+import { createLogger } from '../utils/logger.js';
 import { custom } from 'viem';
 
 /**
@@ -8,6 +9,7 @@ class HeliosClient {
   constructor(options = {}) {
     this.consensusRpc = options.consensusRpc;
     this.executionRpc = options.executionRpc;
+    this.logger = createLogger('HeliosClient');
     this.provider = null;
     this.isStarted = false;
     this.syncPromise = null; // Promise that resolves when synced
@@ -18,21 +20,21 @@ class HeliosClient {
    */
   async start() {
     if (this.isStarted) {
-      console.log('Helios client already started');
+      this.logger.debug('Helios client already started');
       return;
     }
 
     if (this.syncPromise) {
-      console.log('Helios client already starting, waiting for sync...');
+      this.logger.debug('Helios client already starting, waiting for sync');
       return this.syncPromise;
     }
 
     // Create a promise that will resolve when synced
     this.syncPromise = (async () => {
       try {
-        console.log('Starting Helios light client...');
-        console.log(`Consensus RPC: ${this.consensusRpc}`);
-        console.log(`Execution RPC: ${this.executionRpc}`);
+        this.logger.info('Starting Helios light client');
+        this.logger.info(`Consensus RPC: ${this.consensusRpc}`);
+        this.logger.info(`Execution RPC: ${this.executionRpc}`);
 
         // Create Helios provider
         this.provider = await createHeliosProvider({
@@ -45,13 +47,13 @@ class HeliosClient {
         }, 'ethereum');
 
         // Wait for sync to complete
-        console.log('Waiting for Helios to sync...');
+        this.logger.info('Waiting for Helios to sync');
         await this.provider.waitSynced();
         
         this.isStarted = true;
-        console.log('Helios light client started and synced successfully');
+        this.logger.info('Helios light client started and synced successfully');
       } catch (error) {
-        console.error('Failed to start Helios client:', error);
+        this.logger.error('Failed to start Helios client', error);
         this.syncPromise = null; // Reset so it can be retried
         throw error;
       }
@@ -82,14 +84,14 @@ class HeliosClient {
     }
 
     try {
-      console.log('Stopping Helios light client...');
+      this.logger.info('Stopping Helios light client');
       // Note: Helios provider may not have a stop method
       // Just clean up our references
       this.isStarted = false;
       this.provider = null;
-      console.log('Helios light client stopped');
+      this.logger.info('Helios light client stopped');
     } catch (error) {
-      console.error('Error stopping Helios client:', error);
+      this.logger.error('Error stopping Helios client', error);
       throw error;
     }
   }
@@ -124,7 +126,7 @@ class HeliosClient {
       const result = await this.provider.request({ method, params });
       return result;
     } catch (error) {
-      console.error(`Helios RPC error (${method}):`, error);
+      this.logger.error(`Helios RPC error (${method})`, error);
       throw error;
     }
   }

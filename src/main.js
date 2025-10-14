@@ -5,20 +5,22 @@ import { setupTray } from './main/tray.js';
 import { createSettingsWindow } from './main/windows.js';
 import { setupIPCHandlers } from './main/ipc-handlers.js';
 import { checkAndInstallCertificates } from './main/cert-manager.js';
+import { createLogger } from './utils/logger.js';
 
 let tray = null;
 let server = null;
+const logger = createLogger('Main');
 
 /**
  * Initialize and start the server
  */
 async function initServer(options = {}) {
   try {
-    console.log('Starting LocalNode server...');
+    logger.info('Starting LocalNode server');
     server = await startServer(options);
-    console.log('LocalNode server started successfully');
+    logger.info('LocalNode server started successfully');
   } catch (error) {
-    console.error('Failed to start server:', error);
+    logger.error('Failed to start server', error);
   }
 }
 
@@ -26,7 +28,7 @@ async function initServer(options = {}) {
 app.whenReady().then(async () => {
   // Load configuration first
   const config = loadConfig();
-  console.log('Loaded configuration:', config);
+  logger.info('Loaded configuration', config);
   
   // Setup IPC handlers
   setupIPCHandlers(server);
@@ -42,7 +44,7 @@ app.whenReady().then(async () => {
   // Create tray icon
   tray = setupTray(() => createSettingsWindow());
   
-  console.log('LocalNode tray app ready');
+  logger.info('LocalNode tray app ready');
   
   // Start server
   await initServer({
@@ -67,7 +69,7 @@ app.on('activate', () => {
 
 // Clean up on quit
 app.on('before-quit', () => {
-  console.log('Shutting down LocalNode...');
+  logger.info('Shutting down LocalNode');
 });
 
 app.on('will-quit', () => {

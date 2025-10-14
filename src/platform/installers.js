@@ -1,5 +1,6 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { createLogger } from '../utils/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
@@ -28,8 +29,9 @@ class PlatformInstaller {
 
 class MacOSInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
+    const logger = createLogger('MacOSInstaller');
     try {
-      console.log('Installing CA to macOS keychain...');
+      logger.info('Installing CA to macOS keychain');
       
       // Install to the user's login keychain - no sudo/admin privileges required!
       // This is simpler and works perfectly for the current user
@@ -38,10 +40,10 @@ class MacOSInstaller extends PlatformInstaller {
       
       await execAsync(`/usr/bin/security add-trusted-cert -r trustRoot -k "${loginKeychain}" "${caCertPath}"`);
       
-      console.log('✅ Certificate installed and trusted successfully');
+      logger.info('Certificate installed and trusted successfully');
       return true;
     } catch (error) {
-      console.warn('Failed to install CA to macOS keychain:', error.message);
+      logger.warn('Failed to install CA to macOS keychain', error);
       return false;
     }
   }
@@ -83,7 +85,7 @@ class MacOSInstaller extends PlatformInstaller {
           return true;
         } catch (trustError) {
           // If verify-cert fails, the cert exists but is not trusted
-          console.log('Certificate exists in keychain but is not trusted as a root CA');
+          logger.debug('Certificate exists in keychain but is not trusted as a root CA');
           return false;
         }
       }
@@ -112,8 +114,9 @@ class MacOSInstaller extends PlatformInstaller {
 
 class WindowsInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
+    const logger = createLogger('WindowsInstaller');
     try {
-      console.log('Installing CA to Windows certificate store...');
+      logger.info('Installing CA to Windows certificate store');
       
       const options = {
         name: 'Local Node',
@@ -122,10 +125,10 @@ class WindowsInstaller extends PlatformInstaller {
       const command = `certutil -addstore -enterprise Root "${caCertPath}"`;
       
       await sudoExec(command, options);
-      console.log('✅ CA installed to Windows certificate store successfully');
+      logger.info('CA installed to Windows certificate store successfully');
       return true;
     } catch (error) {
-      console.warn('Failed to install CA to Windows certificate store:', error.message);
+      logger.warn('Failed to install CA to Windows certificate store', error);
       return false;
     }
   }
@@ -175,8 +178,9 @@ class WindowsInstaller extends PlatformInstaller {
 
 class LinuxInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
+    const logger = createLogger('LinuxInstaller');
     try {
-      console.log('Installing CA to Linux trust store...');
+      logger.info('Installing CA to Linux trust store');
       
       // Calculate SHA-1 hash to include in filename
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
@@ -202,10 +206,10 @@ class LinuxInstaller extends PlatformInstaller {
       const command = `${cleanupCommand} && cp "${caCertPath}" "${caFile}" && update-ca-certificates`;
       await sudoExec(command, options);
       
-      console.log('✅ CA installed to Linux trust store successfully');
+      logger.info('CA installed to Linux trust store successfully');
       return true;
     } catch (error) {
-      console.warn('Failed to install CA to Linux trust store:', error.message);
+      logger.warn('Failed to install CA to Linux trust store', error);
       return false;
     }
   }
@@ -268,7 +272,8 @@ class LinuxInstaller extends PlatformInstaller {
 
 class UnsupportedInstaller extends PlatformInstaller {
   async installCA(caCertPath) {
-    console.warn('CA installation not supported on this platform');
+    const logger = createLogger('PlatformInstaller');
+    logger.warn('CA installation not supported on this platform');
     return false;
   }
 

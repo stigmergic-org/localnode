@@ -2,11 +2,13 @@ import { createPublicClient } from 'viem';
 import { mainnet } from 'viem/chains';
 import { resolveEnsDomain } from '@simplepg/common';
 import { getLatestCid } from '../utils/cache-manager.js';
+import { createLogger } from '../utils/logger.js';
 
 class ENSResolver {
   constructor(heliosClient) {
     this.heliosClient = heliosClient;
     this.client = null;
+    this.logger = createLogger('ENSResolver');
     this.universalResolver = '0xc0497E381f536Be9ce14B0dD3817cBcAe57d2F62'; // UniversalResolver address
     
     // In-memory cache for ENS -> CID mappings with TTL
@@ -49,7 +51,7 @@ class ENSResolver {
     // Check memory cache first
     const cached = this.memoryCache.get(domain);
     if (cached && cached.expiresAt > Date.now()) {
-      console.log(`Using in-memory cached CID for ${domain}: ${cached.cid} (expires in ${Math.round((cached.expiresAt - Date.now()) / 1000)}s)`);
+      this.logger.debug(`Using in-memory cached CID for ${domain}: ${cached.cid} (expires in ${Math.round((cached.expiresAt - Date.now()) / 1000)}s)`);
       return cached.cid;
     }
     
@@ -61,7 +63,7 @@ class ENSResolver {
     try {
       // Wait for Helios to be synced before resolving
       if (!this.heliosClient.isReady()) {
-        console.log('Waiting for Helios to sync...');
+        this.logger.info('Waiting for Helios to sync');
         await this.heliosClient.waitForSync();
         // Initialize client if not already done
         if (!this.client) {
@@ -81,12 +83,12 @@ class ENSResolver {
       return ipfsHash;
     } catch (error) {
       // Error could mean: offline, domain doesn't exist, RPC down, timeout, etc.
-      console.error(`ENS resolution failed for ${domain}:`, error);
-      console.log('Attempting to use persistent cached CID...');
+      this.logger.error(`ENS resolution failed for ${domain}`, error);
+      this.logger.info('Attempting to use persistent cached CID');
       
       const cachedCid = getLatestCid(domain);
       if (cachedCid) {
-        console.log(`Using persistent cached CID for ${domain}: ${cachedCid}`);
+        this.logger.info(`Using persistent cached CID for ${domain}: ${cachedCid}`);
         
         // Store in memory cache as well
         this.memoryCache.set(domain, {
@@ -112,11 +114,11 @@ class ENSResolver {
     const cleanDomain = domain.replace(/\.eth$/, '');
     const fullDomain = cleanDomain + '.eth';
     
-    console.log(`Resolving ENS domain: ${fullDomain}`);
+    this.logger.debug(`Resolving ENS domain: ${fullDomain}`);
     
     // Use the resolveEnsDomain function from @simplepage/common
     const { cid } = await resolveEnsDomain(this.client, fullDomain, this.universalResolver);
-    console.log(`Resolved ENS domain: ${cid}`);
+    this.logger.debug(`Resolved ENS domain: ${cid}`);
     
     if (!cid) {
       throw new Error(`No content hash found for ${fullDomain}`);
@@ -124,7 +126,7 @@ class ENSResolver {
 
     // resolveEnsDomain returns a CID instance, convert to string
     const ipfsHash = cid.toString();
-    console.log(`Content hash for ${fullDomain}: ${ipfsHash}`);
+    this.logger.debug(`Content hash for ${fullDomain}: ${ipfsHash}`);
     
     return ipfsHash;
   }

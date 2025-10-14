@@ -1,8 +1,11 @@
 import fs from 'fs';
 import path from 'path';
 import { LocalCA } from './local-ca.js';
+import { createLogger } from '../utils/logger.js';
 
 async function generateCertificates(certDir, domain) {
+  const logger = createLogger('Certificates');
+  
   // Create certificates directory if it doesn't exist
   if (!fs.existsSync(certDir)) {
     fs.mkdirSync(certDir, { recursive: true });
@@ -13,11 +16,11 @@ async function generateCertificates(certDir, domain) {
 
   // Check if certificates already exist
   if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-    console.log('SSL certificates already exist');
+    logger.info('SSL certificates already exist');
     return;
   }
 
-  console.log('Generating locally-trusted SSL certificates using local CA...');
+  logger.info('Generating locally-trusted SSL certificates using local CA');
   
   try {
     const localCA = new LocalCA(certDir);

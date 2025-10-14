@@ -1,6 +1,7 @@
 import http from 'http';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { saveCidIfChanged } from './cache-manager.js';
+import { createLogger } from './logger.js';
 
 /**
  * Normalize gateway host - replace IP addresses with localhost for subdomain compatibility
@@ -21,6 +22,8 @@ function normalizeGatewayHost(gatewayUrl) {
  * @param {string} cid - The IPFS CID to cache
  */
 async function cacheCidInMfs(ipfsManager, cid) {
+  const logger = createLogger('MFS');
+  
   try {
     const client = ipfsManager.getClient();
     const mfsPath = `/localnode-cache/${cid}`;
@@ -36,14 +39,17 @@ async function cacheCidInMfs(ipfsManager, cid) {
     
     // Copy from IPFS to MFS (parents flag creates /localnode-cache if needed)
     await client.files.cp(`/ipfs/${cid}`, mfsPath, { parents: true });
-    console.log(`[MFS] Cached CID: ${cid}`);
+    logger.debug(`Cached CID: ${cid}`);
   } catch (error) {
     // Log but don't fail the request
-    console.error('[MFS] Error caching CID:', error.message);
+    logger.error('Error caching CID', error);
   }
 }
 
 function setupRoutes(app, ensResolver, options) {
+  // Create logger for routes
+  const logger = createLogger('Routes');
+  
   // Cache for proxy instances - reuse proxies for the same IPFS hash
   const proxyCache = new Map();
   // Main route handler for ENS domains
@@ -57,35 +63,35 @@ function setupRoutes(app, ensResolver, options) {
     }
 
     try {
-      console.log(`Processing request for ENS domain: ${ensDomain}`);
+      logger.debug(`Processing request for ENS domain: ${ensDomain}`);
       
       // Resolve ENS to IPFS hash (will use cache on error)
       const ipfsHash = await ensResolver.resolveENS(ensDomain);
-      console.log(`Resolved to IPFS hash: ${ipfsHash}`);
+      logger.debug(`Resolved to IPFS hash: ${ipfsHash}`);
       
       // Proxy the request to the IPFS gateway
       const gatewayHost = normalizeGatewayHost(options.ipfsGateway);
       const ipfsBaseUrl = `http://${ipfsHash}.ipfs.${gatewayHost}`;
-      console.log(`Proxying to IPFS gateway: ${ipfsBaseUrl}${req.path}`);
+      logger.debug(`Proxying to IPFS gateway: ${ipfsBaseUrl}${req.path}`);
       
       // 🔥 ASYNC POST-PROCESSING (fire and forget - don't block the request)
       // Save CID to cache if it changed
       saveCidIfChanged(ensDomain, ipfsHash).catch(err => 
-        console.error('Cache save error:', err.message)
+        logger.error('Cache save error', err)
       );
       
       // Get or create proxy middleware for this IPFS hash (reuse existing proxies)
       let proxy = proxyCache.get(ipfsHash);
       
       if (!proxy) {
-        console.log(`[HPM] Creating new proxy for: ${ipfsBaseUrl}`);
+        logger.debug(`Creating new proxy for: ${ipfsBaseUrl}`);
         
         // Create custom agent that resolves *.ipfs.localhost to 127.0.0.1 without DNS
         class LocalhostAgent extends http.Agent {
           createConnection(options, callback) {
             // Override host resolution for *.ipfs.localhost domains
             if (options.host && (options.host.includes('.ipfs.localhost') || options.host.endsWith('.ipfs.localhost'))) {
-              console.log(`[Agent] Redirecting ${options.host} to 127.0.0.1:${options.port}`);
+              logger.debug(`Redirecting ${options.host} to 127.0.0.1:${options.port}`);
               options.host = '127.0.0.1';
             }
             return super.createConnection(options, callback);
@@ -109,12 +115,12 @@ function setupRoutes(app, ensResolver, options) {
             // Only do this once per CID (on the first successful request)
             if (proxyRes.statusCode === 200) {
               cacheCidInMfs(options.ipfsManager, ipfsHash).catch(err => 
-                console.error('MFS cache error:', err.message)
+                logger.error('MFS cache error', err)
               );
             }
           },
           onError: (err, req, res) => {
-            console.error('Proxy error:', err.message);
+            logger.error('Proxy error', err);
             res.status(500).send(`
               <html>
                 <head><title>IPFS Gateway Error</title></head>
@@ -133,7 +139,7 @@ function setupRoutes(app, ensResolver, options) {
       // Execute the proxy as middleware
       proxy(req, res, (err) => {
         if (err) {
-          console.error('Proxy execution error:', err.message);
+          logger.error('Proxy execution error', err);
           res.status(500).send(`
             <html>
               <head><title>Proxy Error</title></head>
@@ -147,7 +153,7 @@ function setupRoutes(app, ensResolver, options) {
       });
       
     } catch (error) {
-      console.error('Error processing request:', error.message);
+      logger.error('Error processing request', error);
       
       if (error.message.includes('No resolver found') || error.message.includes('No content hash')) {
         res.status(404).send(`

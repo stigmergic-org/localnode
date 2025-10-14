@@ -2,6 +2,7 @@ import { createNode } from 'ipfsd-ctl';
 import { path as kuboPath } from 'kubo';
 import { create as createKuboClient } from 'kubo-rpc-client';
 import { getIpfsDir } from '../utils/config.js';
+import { createLogger } from '../utils/logger.js';
 
 // Standard IPFS API port - we check this and use it for managed instance
 const IPFS_API_PORT = 5001;
@@ -15,6 +16,7 @@ const MANAGED_GATEWAY_PORT = 58080;
 export class IPFSManager {
   constructor(options = {}) {
     this.options = options;
+    this.logger = createLogger('IPFSManager');
     
     this.node = null;
     this.client = null;
@@ -31,7 +33,7 @@ export class IPFSManager {
       // Create client to check
       this.client = createKuboClient({ url: `http://localhost:${IPFS_API_PORT}` });
       const version = await this.client.version();
-      console.log(`✅ Found existing IPFS node: ${version.version} on port ${IPFS_API_PORT}`);
+      this.logger.info(`Found existing IPFS node: ${version.version} on port ${IPFS_API_PORT}`);
       
       return true;
     } catch (error) {
@@ -59,11 +61,11 @@ export class IPFSManager {
       }
       
       // Fallback to default if we can't parse it
-      console.warn(`Could not parse gateway address: ${gatewayAddress}, using default`);
+      this.logger.warn(`Could not parse gateway address: ${gatewayAddress}, using default`);
       return 'http://localhost:8080';
     } catch (error) {
-      console.warn(`Failed to fetch gateway URL from IPFS API: ${error.message}`);
-      console.warn('Using default gateway URL: http://localhost:8080');
+      this.logger.warn(`Failed to fetch gateway URL from IPFS API: ${error.message}`);
+      this.logger.warn('Using default gateway URL: http://localhost:8080');
       return 'http://localhost:8080';
     }
   }
@@ -75,14 +77,14 @@ export class IPFSManager {
    */
   async startManagedIpfs() {
     try {
-      console.log('Starting managed IPFS instance...');
-      console.log(`  API Port: ${IPFS_API_PORT}`);
-      console.log(`  Gateway Port: ${MANAGED_GATEWAY_PORT} (custom to avoid conflicts)`);
-      console.log(`  WebUI: http://localhost:${IPFS_API_PORT}/webui`);
+      this.logger.info('Starting managed IPFS instance');
+      this.logger.info(`  API Port: ${IPFS_API_PORT}`);
+      this.logger.info(`  Gateway Port: ${MANAGED_GATEWAY_PORT} (custom to avoid conflicts)`);
+      this.logger.info(`  WebUI: http://localhost:${IPFS_API_PORT}/webui`);
       
       // Create IPFS node using the proper ipfsd-ctl API
       const ipfsRepoPath = getIpfsDir();
-      console.log(`  Repo Path: ${ipfsRepoPath}`);
+      this.logger.info(`  Repo Path: ${ipfsRepoPath}`);
       
       this.node = await createNode({
         type: 'kubo',
@@ -116,13 +118,13 @@ export class IPFSManager {
       // Fetch actual gateway URL from IPFS configuration
       this.ipfsGatewayUrl = await this.fetchGatewayUrl();
       
-      console.log(`✅ Managed IPFS instance started successfully`);
-      console.log(`   API: http://localhost:${IPFS_API_PORT}`);
-      console.log(`   Gateway: ${this.ipfsGatewayUrl}`);
-      console.log(`   WebUI: http://localhost:${IPFS_API_PORT}/webui`);
+      this.logger.info('Managed IPFS instance started successfully');
+      this.logger.info(`   API: http://localhost:${IPFS_API_PORT}`);
+      this.logger.info(`   Gateway: ${this.ipfsGatewayUrl}`);
+      this.logger.info(`   WebUI: http://localhost:${IPFS_API_PORT}/webui`);
       
     } catch (error) {
-      console.error('Failed to start managed IPFS instance:', error);
+      this.logger.error('Failed to start managed IPFS instance', error);
       throw error;
     }
   }
@@ -142,12 +144,12 @@ export class IPFSManager {
       // Fetch actual gateway URL from existing IPFS configuration
       this.ipfsGatewayUrl = await this.fetchGatewayUrl();
       
-      console.log('Using existing IPFS installation');
-      console.log(`  API: http://localhost:${IPFS_API_PORT}`);
-      console.log(`  Gateway: ${this.ipfsGatewayUrl}`);
+      this.logger.info('Using existing IPFS installation');
+      this.logger.info(`  API: http://localhost:${IPFS_API_PORT}`);
+      this.logger.info(`  Gateway: ${this.ipfsGatewayUrl}`);
     } else {
       // Port 5001 is free, start our managed instance on standard ports
-      console.log('No existing IPFS found, starting managed instance on standard ports...');
+      this.logger.info('No existing IPFS found, starting managed instance on standard ports');
       await this.startManagedIpfs();
     }
 
@@ -188,20 +190,20 @@ export class IPFSManager {
   async stop() {
     if (this.node && this.isManaged) {
       try {
-        console.log('Stopping managed IPFS instance...');
+        this.logger.info('Stopping managed IPFS instance');
         await this.node.stop();
         this.node = null;
         this.client = null;
-        console.log('✅ Managed IPFS instance stopped');
+        this.logger.info('Managed IPFS instance stopped');
       } catch (error) {
-        console.error('Error stopping managed IPFS instance:', error);
+        this.logger.error('Error stopping managed IPFS instance', error);
         // Even if stop fails, clean up references
         this.node = null;
         this.client = null;
       }
     } else if (this.client && !this.isManaged) {
       // For external IPFS, just clear our client reference
-      console.log('Disconnecting from external IPFS instance...');
+      this.logger.info('Disconnecting from external IPFS instance');
       this.client = null;
     }
   }

@@ -1,5 +1,6 @@
 import { Menu, Tray, shell, nativeImage, app } from 'electron';
 import path from 'path';
+import { createLogger } from '../utils/logger.js';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 
@@ -18,12 +19,13 @@ const __dirname = path.dirname(__filename);
  * @returns {NativeImage} Tray icon
  */
 function createTrayIcon() {
+  const logger = createLogger('Tray');
   const iconPath = path.join(__dirname, '..', '..', 'assets', 'logo.png');
   
   let icon = nativeImage.createFromPath(iconPath);
   
   if (icon.isEmpty()) {
-    console.error('ERROR: logo.png could not be loaded from:', iconPath);
+    logger.error('Icon could not be loaded', { iconPath });
     throw new Error('Tray icon file not found or invalid');
   }
   

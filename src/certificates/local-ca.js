@@ -4,6 +4,7 @@ import path from 'path';
 import { createInterface } from 'readline';
 import { createPlatformDialog } from '../platform/dialogs.js';
 import { createPlatformInstaller } from '../platform/installers.js';
+import { createLogger } from '../utils/logger.js';
 
 class LocalCA {
   constructor(certDir) {
@@ -14,6 +15,7 @@ class LocalCA {
     // CA private key is kept in memory only (never written to disk)
     this.caPrivateKey = null;
     this.caCertificate = null;
+    this.logger = createLogger('LocalCA');
   }
 
   async initialize(skipInstallPrompt = false) {
@@ -29,15 +31,15 @@ class LocalCA {
     if (certificatesExist) {
       const isValid = await this.validateCertificates();
       if (isValid) {
-        console.log('SSL certificates already exist and are valid');
+        this.logger.info('SSL certificates already exist and are valid');
         return;
       } else {
-        console.log('Existing certificates are weak or invalid, regenerating...');
+        this.logger.warn('Existing certificates are weak or invalid, regenerating');
         this.removeOldCertificates();
       }
     }
 
-    console.log('Creating local Certificate Authority...');
+    this.logger.info('Creating local Certificate Authority');
     await this.createCA();
     
     // Only prompt for installation if not skipped (for CLI mode)

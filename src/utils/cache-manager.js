@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getCacheDir } from './config.js';
+import { createLogger } from './logger.js';
 
 /**
  * Get the cache directory for a specific domain
@@ -24,6 +25,8 @@ export function getCacheDirForDomain(domain) {
  * @returns {string|null} The latest CID or null if no cache exists
  */
 export function getLatestCid(domain) {
+  const logger = createLogger('CacheManager');
+  
   try {
     const domainDir = path.join(getCacheDir(), domain);
     
@@ -45,7 +48,7 @@ export function getLatestCid(domain) {
     
     return cid;
   } catch (error) {
-    console.error(`Error reading cache for ${domain}:`, error.message);
+    logger.error(`Error reading cache for ${domain}`, error);
     return null;
   }
 }
@@ -57,6 +60,8 @@ export function getLatestCid(domain) {
  * @returns {Promise<boolean>} True if saved, false if unchanged or error
  */
 export async function saveCidIfChanged(domain, cid) {
+  const logger = createLogger('CacheManager');
+  
   try {
     const latestCid = getLatestCid(domain);
     
@@ -70,11 +75,11 @@ export async function saveCidIfChanged(domain, cid) {
     const cacheFile = path.join(domainDir, `${timestamp}.txt`);
     
     fs.writeFileSync(cacheFile, cid, 'utf8');
-    console.log(`Cached new CID for ${domain}: ${cid}`);
+    logger.info(`Cached new CID for ${domain}: ${cid}`);
     
     return true;
   } catch (error) {
-    console.error(`Error saving cache for ${domain}:`, error.message);
+    logger.error(`Error saving cache for ${domain}`, error);
     return false;
   }
 }
@@ -85,6 +90,8 @@ export async function saveCidIfChanged(domain, cid) {
  * @param {number} keep - Number of versions to keep (default: 10)
  */
 export function cleanupOldVersions(domain, keep = 10) {
+  const logger = createLogger('CacheManager');
+  
   try {
     const domainDir = path.join(getCacheDir(), domain);
     
@@ -101,10 +108,10 @@ export function cleanupOldVersions(domain, keep = 10) {
     files.slice(keep).forEach(file => {
       const filePath = path.join(domainDir, file);
       fs.unlinkSync(filePath);
-      console.log(`Cleaned up old cache: ${file}`);
+      logger.debug(`Cleaned up old cache: ${file}`);
     });
   } catch (error) {
-    console.error(`Error cleaning up cache for ${domain}:`, error.message);
+    logger.error(`Error cleaning up cache for ${domain}`, error);
   }
 }
 

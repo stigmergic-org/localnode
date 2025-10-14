@@ -11,6 +11,8 @@ import { IPFSManager } from '../ipfs/ipfs-manager.js';
 import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache, enableAutoSeeding, disableAutoSeeding, isAutoSeedingEnabled } from '../utils/cache-api.js';
 import { saveCidIfChanged } from '../utils/cache-manager.js';
 import { CID } from 'multiformats/cid';
+import { createLogger } from '../utils/logger.js';
+import { createLoggingMiddleware, createErrorLoggingMiddleware } from '../utils/logging-middleware.js';
 
 /**
  * Format bytes into human readable format
@@ -40,6 +42,9 @@ export class LocalNodeServer {
       certDir: options.certDir || './certs',
       ...options
     };
+    
+    // Create logger for this server instance
+    this.logger = createLogger('LocalNodeServer');
     
     // Main app for ENS proxy
     this.app = express();
@@ -71,32 +76,20 @@ export class LocalNodeServer {
     // Middleware for main ENS proxy app
     this.app.use(express.json());
     this.app.use(express.urlencoded({ extended: true }));
-    
-    // Logging middleware for ENS app
-    this.app.use((req, res, next) => {
-      console.log(`[ENS] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
-      next();
-    });
+    this.app.use(createLoggingMiddleware('ENS'));
+    this.app.use(createErrorLoggingMiddleware('ENS'));
     
     // Middleware for RPC app
     this.rpcApp.use(express.json());
     this.rpcApp.use(express.urlencoded({ extended: true }));
-    
-    // Logging middleware for RPC app
-    this.rpcApp.use((req, res, next) => {
-      console.log(`[RPC] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
-      next();
-    });
+    this.rpcApp.use(createLoggingMiddleware('RPC'));
+    this.rpcApp.use(createErrorLoggingMiddleware('RPC'));
     
     // Middleware for node cache management app
     this.nodeCacheApp.use(express.json());
     this.nodeCacheApp.use(express.urlencoded({ extended: true }));
-    
-    // Logging middleware for cache app
-    this.nodeCacheApp.use((req, res, next) => {
-      console.log(`[CACHE] ${new Date().toISOString()} - ${req.method} ${req.url} - ${req.get('host')}`);
-      next();
-    });
+    this.nodeCacheApp.use(createLoggingMiddleware('CACHE'));
+    this.nodeCacheApp.use(createErrorLoggingMiddleware('CACHE'));
   }
 
   setupRoutes() {
@@ -136,12 +129,12 @@ export class LocalNodeServer {
     // API endpoint to get all cached domains (fast - just domain + CID)
     this.nodeCacheApp.get('/api/cached-domains', (req, res) => {
       try {
-        console.log('[CACHE API] Getting cached domains...');
+        this.logger.debug('Getting cached domains');
         const domains = getAllCachedDomains();
-        console.log(`[CACHE API] Returning ${domains.length} domains`);
+        this.logger.info(`Returning ${domains.length} domains`);
         res.json(domains);
       } catch (error) {
-        console.error('[CACHE API] Error getting cached domains:', error);
+        this.logger.error('Error getting cached domains', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -157,7 +150,7 @@ export class LocalNodeServer {
         const favicon = await getDomainFavicon(domain, this.ipfsManager);
         res.json({ favicon });
       } catch (error) {
-        console.error(`[CACHE API] Error getting favicon for ${domain}:`, error);
+        this.logger.error(`Error getting favicon for ${domain}`, error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -173,7 +166,7 @@ export class LocalNodeServer {
         const sizes = await getDomainSizes(domain, this.ipfsManager);
         res.json(sizes);
       } catch (error) {
-        console.error(`[CACHE API] Error getting sizes for ${domain}:`, error);
+        this.logger.error(`Error getting sizes for ${domain}`, error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -189,7 +182,7 @@ export class LocalNodeServer {
         const success = await clearDomainCache(domain, this.ipfsManager);
         res.json({ success });
       } catch (error) {
-        console.error('Error clearing cache:', error);
+        this.logger.error('Error clearing cache', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -209,7 +202,7 @@ export class LocalNodeServer {
           : await disableAutoSeeding(domain, this.ipfsManager);
         res.json({ success });
       } catch (error) {
-        console.error('Error toggling auto-seed:', error);
+        this.logger.error('Error toggling auto-seed', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -222,7 +215,7 @@ export class LocalNodeServer {
         const totalUsed = stat.sizeLocal || 0;
         res.json({ totalUsed: formatBytes(totalUsed) });
       } catch (error) {
-        console.error('[CACHE API] Error getting total storage:', error);
+        this.logger.error('Error getting total storage', error);
         res.status(500).json({ error: error.message });
       }
     });
@@ -236,7 +229,7 @@ export class LocalNodeServer {
       return; // Already running
     }
     
-    console.log(`Starting auto-seeding update loop (every ${this.autoSeedingIntervalMs / 60000} minutes)`);
+    this.logger.info(`Starting auto-seeding update loop (every ${this.autoSeedingIntervalMs / 60000} minutes)`);
     
     // Run immediately, then on interval
     this.checkAutoSeedingUpdates();
@@ -253,7 +246,7 @@ export class LocalNodeServer {
     if (this.autoSeedingInterval) {
       clearInterval(this.autoSeedingInterval);
       this.autoSeedingInterval = null;
-      console.log('Stopped auto-seeding update loop');
+      this.logger.info('Stopped auto-seeding update loop');
     }
   }
 
@@ -262,7 +255,7 @@ export class LocalNodeServer {
    */
   async checkAutoSeedingUpdates() {
     try {
-      console.log('[Auto-Seeding] Checking for updates...');
+      this.logger.debug('Checking for updates');
       
       // Get all cached domains
       const domains = getAllCachedDomains();
@@ -271,24 +264,24 @@ export class LocalNodeServer {
       const autoSeedingDomains = domains.filter(d => d.autoSeeding);
       
       if (autoSeedingDomains.length === 0) {
-        console.log('[Auto-Seeding] No domains to check');
+        this.logger.debug('No domains to check');
         return;
       }
       
-      console.log(`[Auto-Seeding] Checking ${autoSeedingDomains.length} domains for updates`);
+      this.logger.info(`Checking ${autoSeedingDomains.length} domains for updates`);
       
       // Check each domain for updates
       for (const domain of autoSeedingDomains) {
         try {
           await this.checkDomainUpdate(domain);
         } catch (error) {
-          console.error(`[Auto-Seeding] Error checking ${domain.domain}:`, error.message);
+          this.logger.error(`Error checking ${domain.domain}`, error);
         }
       }
       
-      console.log('[Auto-Seeding] Update check completed');
+      this.logger.debug('Update check completed');
     } catch (error) {
-      console.error('[Auto-Seeding] Error in update check:', error.message);
+      this.logger.error('Error in update check', error);
     }
   }
 
@@ -309,17 +302,17 @@ export class LocalNodeServer {
       
       // Use CID.equals() for proper comparison
       if (oldCidObj.equals(newCidObj)) {
-        console.log(`[Auto-Seeding] ${domain} is up to date (${newCid.substring(0, 20)}...)`);
+        this.logger.debug(`${domain} is up to date (${newCid.substring(0, 20)}...)`);
         return;
       }
       
-      console.log(`[Auto-Seeding] ${domain} has update: ${oldCid.substring(0, 20)}... → ${newCid.substring(0, 20)}...`);
+      this.logger.info(`${domain} has update: ${oldCid.substring(0, 20)}... → ${newCid.substring(0, 20)}...`);
       
       // Update the domain
       await this.updateAutoSeedingDomain(domain, newCid);
       
     } catch (error) {
-      console.error(`[Auto-Seeding] Error checking ${cachedDomain.domain}:`, error.message);
+      this.logger.error(`Error checking ${cachedDomain.domain}`, error);
     }
   }
 
@@ -333,20 +326,20 @@ export class LocalNodeServer {
       // 1. Add to MFS cache
       const mfsPath = `/localnode-cache/${newCid}`;
       await client.files.cp(`/ipfs/${newCid}`, mfsPath, { parents: true });
-      console.log(`[Auto-Seeding] Added ${newCid} to MFS cache`);
+      this.logger.debug(`Added ${newCid} to MFS cache`);
       
       // 2. Pin recursively
       await client.pin.add(newCid, { recursive: true });
-      console.log(`[Auto-Seeding] Pinned ${newCid} recursively`);
+      this.logger.debug(`Pinned ${newCid} recursively`);
       
       // 3. Add to filesystem cache
       await saveCidIfChanged(domain, newCid);
-      console.log(`[Auto-Seeding] Updated cache for ${domain}`);
+      this.logger.debug(`Updated cache for ${domain}`);
       
-      console.log(`[Auto-Seeding] Successfully updated ${domain} to ${newCid.substring(0, 20)}...`);
+      this.logger.info(`Successfully updated ${domain} to ${newCid.substring(0, 20)}...`);
       
     } catch (error) {
-      console.error(`[Auto-Seeding] Error updating ${domain}:`, error.message);
+      this.logger.error(`Error updating ${domain}`, error);
       throw error;
     }
   }
@@ -355,7 +348,7 @@ export class LocalNodeServer {
     try {
       // Initialize IPFS (check for existing or start managed instance)
       // IPFSManager will automatically fetch the gateway URL from IPFS config
-      console.log('Initializing IPFS...');
+      this.logger.info('Initializing IPFS');
       const ipfsConfig = await this.ipfsManager.initialize();
       
       // Update options with gateway URL
@@ -400,30 +393,30 @@ export class LocalNodeServer {
       this.httpsServer = createHttpsServer(httpsOptions, combinedApp);
 
       this.httpsServer.listen(this.options.port, () => {
-        console.log(`\n🔒 HTTPS server listening on port ${this.options.port}`);
-        console.log(`   ENS sites: https://your-domain.eth.${this.options.domain}`);
-        console.log(`   Example: https://vitalik.eth.${this.options.domain}`);
-        console.log(`   Ethereum RPC: https://ethereum.node.${this.options.domain}`);
-        console.log('\nNote: Requests will be queued until Helios finishes syncing...\n');
+        this.logger.info(`🔒 HTTPS server listening on port ${this.options.port}`);
+        this.logger.info(`   ENS sites: https://your-domain.eth.${this.options.domain}`);
+        this.logger.info(`   Example: https://vitalik.eth.${this.options.domain}`);
+        this.logger.info(`   Ethereum RPC: https://ethereum.node.${this.options.domain}`);
+        this.logger.info('Note: Requests will be queued until Helios finishes syncing');
       });
 
       // Start Helios light client in the background (don't block server startup)
       this.heliosClient.start().then(() => {
         // Initialize ENS resolver with Helios transport once synced
         this.ensResolver.init();
-        console.log('✅ Server is now fully ready to handle ENS and RPC requests\n');
+        this.logger.info('✅ Server is now fully ready to handle ENS and RPC requests');
         
         // Start auto-seeding update loop once ENS resolver is ready
         this.startAutoSeedingLoop();
       }).catch(error => {
-        console.error('❌ Failed to start Helios client:', error);
-        console.error('Server will continue to run but ENS resolution and RPC will not work\n');
+        this.logger.error('❌ Failed to start Helios client', error);
+        this.logger.warn('Server will continue to run but ENS resolution and RPC will not work');
       });
 
       // Graceful shutdown handlers (register only once)
       if (!this.shutdownHandlersRegistered) {
         const shutdown = async (signal) => {
-          console.log(`\n${signal} received - shutting down servers...`);
+          this.logger.info(`${signal} received - shutting down servers`);
           await this.stop();
           process.exit(0);
         };
@@ -456,18 +449,18 @@ export class LocalNodeServer {
       
       if (this.httpsServer) {
         this.httpsServer.close(() => {
-          console.log('Server stopped successfully');
+          this.logger.info('Server stopped successfully');
           resolve();
         });
       } else {
-        console.log('Server stopped successfully');
+        this.logger.info('Server stopped successfully');
         resolve();
       }
     });
   }
 
   async restart(newOptions) {
-    console.log('Restarting server with new configuration...');
+    this.logger.info('Restarting server with new configuration');
     await this.stop();
     
     // Update options
