@@ -91,7 +91,7 @@
     }
     
     .domains-table th:nth-child(1) {
-      width: 50%;
+      width: 45%;
     }
     
     .domains-table th:nth-child(2),
@@ -100,7 +100,11 @@
     }
     
     .domains-table th:nth-child(4) {
-      width: 26%;
+      width: 15%;
+    }
+    
+    .domains-table th:nth-child(5) {
+      width: 16%;
     }
     
     .domains-table th {
@@ -303,6 +307,73 @@
       margin-bottom: 8px;
     }
     
+    .empty-state-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    
+    .section {
+      margin-bottom: 40px;
+    }
+    
+    .section h2 {
+      font-size: 24px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 8px;
+    }
+    
+    .section-description {
+      color: #7f8c8d;
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    
+    .rpc-section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 32px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .rpc-section h3 {
+      font-size: 18px;
+      font-weight: 600;
+      color: #2c3e50;
+      margin-bottom: 12px;
+    }
+    
+    .rpc-url-container {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    
+    .rpc-url-input {
+      flex: 1;
+      padding: 12px 16px;
+      border: 2px solid #e9ecef;
+      border-radius: 6px;
+      font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Roboto Mono', Consolas, 'Courier New', monospace;
+      font-size: 14px;
+      background: #f8f9fa;
+      color: #2c3e50;
+    }
+    
+    .rpc-url-input:focus {
+      outline: none;
+      border-color: #3498db;
+    }
+    
+    .rpc-description {
+      color: #7f8c8d;
+      font-size: 14px;
+      margin: 0 0 16px 0;
+    }
+    
     /* Dark mode */
     @media (prefers-color-scheme: dark) {
       body {
@@ -320,6 +391,37 @@
       }
       
       .header p {
+        color: #b1b1b1;
+      }
+      
+      .section h2 {
+        color: #e1e1e1;
+      }
+      
+      .section-description {
+        color: #b1b1b1;
+      }
+      
+      .rpc-section {
+        background: #2a2a2a;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      }
+      
+      .rpc-section h3 {
+        color: #e1e1e1;
+      }
+      
+      .rpc-url-input {
+        background: #3a3a3a;
+        border-color: #4a4a4a;
+        color: #e1e1e1;
+      }
+      
+      .rpc-url-input:focus {
+        border-color: #5dade2;
+      }
+      
+      .rpc-description {
         color: #b1b1b1;
       }
       
@@ -411,14 +513,29 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Local Node Cache</h1>
-      <p>Manage your cached ENS domains and IPFS content</p>
+      <h1><img src="/icon.svg" alt="Local Node" style="width: 48px; height: 48px; vertical-align: middle; margin-right: 16px; margin-top: -6px;"> Local Node</h1>
+      <p>Manage your Ethereum node</p>
       <div class="stats">
         <div class="stat">
-          <span class="stat-value" id="domainCount">-</span> domains cached
+          <span class="stat-value" id="autoSeededCount">-</span> domains auto-seeded
         </div>
         <div class="stat">
-          <span class="stat-value" id="totalSize">-</span> total size
+          <span class="stat-value" id="cachedCount">-</span> domains cached
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="totalUsed">-</span> storage used
+        </div>
+      </div>
+      
+      <!-- RPC URL Section -->
+      <div class="rpc-section">
+        <h3>🔗 Ethereum RPC Endpoint</h3>
+        <p class="rpc-description">Use this URL to connect your Ethereum wallet to your local node</p>
+        <div class="rpc-url-container">
+          <input type="text" value="https://ethereum.node.localhost" readonly class="rpc-url-input" id="rpcUrlInput">
+          <button class="btn btn-primary" onclick="copyRpcUrl(this)" data-tooltip="Copy RPC URL">
+            📋
+          </button>
         </div>
       </div>
     </div>
@@ -430,24 +547,59 @@
     </div>
     
     <div id="content" style="display: none;">
-      <div id="domainsTable" class="domains-table">
-        <table>
-          <thead>
-            <tr>
-              <th>Website</th>
-              <th>Local Cache</th>
-              <th>Total Size</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody id="domainsTableBody">
-          </tbody>
-        </table>
+      <!-- Auto-Seeding Section -->
+      <div class="section">
+        <h2>🌱 Auto-Seeding</h2>
+        <p class="section-description">Domains that your node automatically keeps in sync</p>
+        
+        <div id="autoSeedingTable" class="domains-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Website</th>
+                <th>Local Cache</th>
+                <th>Total Size</th>
+                <th>Synced</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="autoSeedingTableBody">
+            </tbody>
+          </table>
+        </div>
+        
+        <div id="autoSeedingEmptyState" class="empty-state" style="display: none;">
+          <div class="empty-state-icon">🌱</div>
+          <h3>Not auto-seeding any domains yet...</h3>
+          <p>Auto-seeding keeps your favorite Ethereum websites always available and up-to-date. When you enable auto-seeding for a domain, Local Node will download the entire site to your local node, keep it available for others on the network, and automatically fetch updates when the content changes. This helps keep the decentralized web fast and reliable for everyone.</p>
+        </div>
       </div>
       
-      <div id="emptyState" class="empty-state" style="display: none;">
-        <h3>No cached domains</h3>
-        <p>Visit some ENS domains to see them cached here</p>
+      <!-- Cached Section -->
+      <div class="section">
+        <h2>📦 Cached</h2>
+        <p class="section-description">Domains cached after visit</p>
+        
+        <div id="cachedTable" class="domains-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Website</th>
+                <th>Local Cache</th>
+                <th>Total Size</th>
+                <th>Cached</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="cachedTableBody">
+            </tbody>
+          </table>
+        </div>
+        
+        <div id="cachedEmptyState" class="empty-state" style="display: none;">
+          <h3>No cached domains</h3>
+          <p>Visit some ENS domains to see them cached here</p>
+        </div>
       </div>
     </div>
   </div>
@@ -461,11 +613,15 @@
     const errorEl = document.getElementById('error');
     const loadingEl = document.getElementById('loading');
     const contentEl = document.getElementById('content');
-    const domainsTableEl = document.getElementById('domainsTable');
-    const domainsTableBodyEl = document.getElementById('domainsTableBody');
-    const emptyStateEl = document.getElementById('emptyState');
-    const domainCountEl = document.getElementById('domainCount');
-    const totalSizeEl = document.getElementById('totalSize');
+    const autoSeedingTableEl = document.getElementById('autoSeedingTable');
+    const autoSeedingTableBodyEl = document.getElementById('autoSeedingTableBody');
+    const autoSeedingEmptyStateEl = document.getElementById('autoSeedingEmptyState');
+    const cachedTableEl = document.getElementById('cachedTable');
+    const cachedTableBodyEl = document.getElementById('cachedTableBody');
+    const cachedEmptyStateEl = document.getElementById('cachedEmptyState');
+    const autoSeededCountEl = document.getElementById('autoSeededCount');
+    const cachedCountEl = document.getElementById('cachedCount');
+    const totalUsedEl = document.getElementById('totalUsed');
     
     // Load domains on page load
     document.addEventListener('DOMContentLoaded', loadDomains);
@@ -494,7 +650,18 @@
         loadingEl.style.display = 'none';
         contentEl.style.display = 'block';
         
-        // Step 2: Fetch details for each domain in parallel
+        // Step 2: Fetch total storage used
+        try {
+          const storageResponse = await fetch('/api/total-storage');
+          if (storageResponse.ok) {
+            const storageData = await storageResponse.json();
+            totalUsedEl.textContent = storageData.totalUsed;
+          }
+        } catch (error) {
+          console.warn('Could not fetch total storage:', error);
+        }
+        
+        // Step 3: Fetch details for each domain in parallel
         const detailPromises = domains.map(async (domain) => {
           // Fetch favicon and sizes in parallel for this domain
           const [faviconResult, sizesResult] = await Promise.allSettled([
@@ -530,34 +697,52 @@
     }
     
     function renderDomains() {
-      if (domains.length === 0) {
-        domainsTableEl.style.display = 'none';
+      // Separate domains into auto-seeding and cached
+      const autoSeedingDomains = domains.filter(d => d.autoSeeding);
+      const cachedDomains = domains.filter(d => !d.autoSeeding);
+      
+      // Render auto-seeding table
+      renderTable(autoSeedingDomains, autoSeedingTableEl, autoSeedingTableBodyEl, autoSeedingEmptyStateEl);
+      
+      // Render cached table
+      renderTable(cachedDomains, cachedTableEl, cachedTableBodyEl, cachedEmptyStateEl);
+    }
+    
+    function renderTable(domainList, tableEl, tableBodyEl, emptyStateEl) {
+      if (domainList.length === 0) {
+        tableEl.style.display = 'none';
         emptyStateEl.style.display = 'block';
         return;
       }
       
-      domainsTableEl.style.display = 'block';
+      tableEl.style.display = 'block';
       emptyStateEl.style.display = 'none';
       
       // Sort domains by domain name
-      const sortedDomains = [...domains].sort((a, b) => a.domain.localeCompare(b.domain));
+      const sortedDomains = [...domainList].sort((a, b) => a.domain.localeCompare(b.domain));
       
       // Render all domains with placeholders
-      domainsTableBodyEl.innerHTML = sortedDomains.map(domain => 
+      tableBodyEl.innerHTML = sortedDomains.map(domain => 
         getDomainRowHTML(domain)
       ).join('');
     }
     
     function renderDomainRow(domain) {
-      // Find row by data attribute
-      const row = domainsTableBodyEl.querySelector(`tr[data-domain="${domain.domain}"]`);
-      if (!row) return;
+      // Find row in both tables by data attribute
+      const autoSeedingRow = autoSeedingTableBodyEl.querySelector(`tr[data-domain="${domain.domain}"]`);
+      const cachedRow = cachedTableBodyEl.querySelector(`tr[data-domain="${domain.domain}"]`);
       
-      // Update the row's HTML directly
-      row.outerHTML = getDomainRowHTML(domain);
+      if (autoSeedingRow) {
+        autoSeedingRow.outerHTML = getDomainRowHTML(domain);
+      }
+      if (cachedRow) {
+        cachedRow.outerHTML = getDomainRowHTML(domain);
+      }
     }
     
     function getDomainRowHTML(domain) {
+      const syncedAt = domain.lastCached ? formatDate(domain.lastCached) : 'Never';
+      
       return `
         <tr data-domain="${domain.domain}">
           <td>
@@ -589,17 +774,22 @@
             <div class="size-cell">${domain.totalSize || '...'}</div>
           </td>
           <td>
+            <div class="size-cell">${syncedAt}</div>
+          </td>
+          <td>
             <div class="domain-actions">
-              <a href="http://localhost:5001/webui/#/explore/${domain.cid}" target="_blank" class="btn btn-primary" data-tooltip="Inspect Files">
+              <a href="http://localhost:5001/webui/#/ipfs/${domain.cid}" target="_blank" class="btn btn-primary" data-tooltip="Inspect Files">
                 🔍
               </a>
               
-              <button class="btn btn-danger" onclick="clearCache('${domain.domain}')" data-tooltip="Delete Cache">
-                🗑️
-              </button>
+              ${domain.autoSeeding ? '' : `
+                <button class="btn btn-danger" onclick="clearCache('${domain.domain}')" data-tooltip="Delete Cache">
+                  🗑️
+                </button>
+              `}
               
-              <button class="btn btn-success" onclick="autoSeed('${domain.domain}')" data-tooltip="Auto-seed">
-                🌱
+              <button class="btn ${domain.autoSeeding ? 'btn-danger' : 'btn-success'}" onclick="toggleAutoSeed('${domain.domain}', ${domain.autoSeeding}, this)" data-tooltip="${domain.autoSeeding ? 'Stop auto-seeding' : 'Enable Auto-seed'}">
+                ${domain.autoSeeding ? '⏸️' : '🌱'}
               </button>
             </div>
           </td>
@@ -608,23 +798,14 @@
     }
     
     function updateStats() {
-      domainCountEl.textContent = domains.length;
+      const autoSeededDomains = domains.filter(d => d.autoSeeding);
+      const cachedDomains = domains.filter(d => !d.autoSeeding);
       
-      // Calculate total size (approximate)
-      let totalBytes = 0;
-      let hasValidSizes = false;
+      autoSeededCountEl.textContent = autoSeededDomains.length;
+      cachedCountEl.textContent = cachedDomains.length;
       
-      domains.forEach(domain => {
-        if (domain.totalSize && domain.totalSize !== 'Unknown' && domain.totalSize !== 'Error') {
-          const bytes = parseSize(domain.totalSize);
-          if (bytes > 0) {
-            totalBytes += bytes;
-            hasValidSizes = true;
-          }
-        }
-      });
-      
-      totalSizeEl.textContent = hasValidSizes ? formatBytes(totalBytes) : 'Unknown';
+      // Total storage is now fetched separately via API
+      // This function only updates the counts
     }
     
     async function clearCache(domain) {
@@ -654,21 +835,40 @@
       }
     }
     
-    async function autoSeed(domain) {
-      // Placeholder function - does nothing for now
-      console.log(`Auto-seed requested for ${domain} (not implemented yet)`);
-      
-      // Show a temporary message
-      const button = event.target;
+    async function toggleAutoSeed(domain, currentlyEnabled, button) {
+      // Show loading state
       const originalText = button.textContent;
+      const originalTooltip = button.getAttribute('data-tooltip');
+      
       button.textContent = '⏳';
       button.disabled = true;
+      button.setAttribute('data-tooltip', 'Syncing data...');
       
-      setTimeout(() => {
+      try {
+        const response = await fetch(`/api/toggle-auto-seed?domain=${encodeURIComponent(domain)}&enable=${!currentlyEnabled}`, {
+          method: 'POST'
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        if (result.success) {
+          // Reload domains to reflect the change
+          await loadDomains();
+        } else {
+          throw new Error(result.error || 'Failed to toggle auto-seed');
+        }
+      } catch (error) {
+        console.error('Error toggling auto-seed:', error);
+        showError(`Failed to toggle auto-seed for ${domain}: ${error.message}`);
+        
+        // Reset button state on error
         button.textContent = originalText;
         button.disabled = false;
-        console.log(`Auto-seed placeholder completed for ${domain}`);
-      }, 1000);
+        button.setAttribute('data-tooltip', originalTooltip);
+      }
     }
     
     function showError(message) {
@@ -720,6 +920,30 @@
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+    
+    async function copyRpcUrl(button) {
+      const rpcUrlInput = document.getElementById('rpcUrlInput');
+      try {
+        await navigator.clipboard.writeText(rpcUrlInput.value);
+        
+        // Show temporary success feedback
+        const originalText = button.textContent;
+        button.textContent = '✅';
+        button.style.background = '#27ae60';
+        button.style.borderColor = '#27ae60';
+        button.style.color = 'white';
+        
+        setTimeout(() => {
+          button.textContent = originalText;
+          button.style.background = '';
+          button.style.borderColor = '';
+          button.style.color = '';
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to copy RPC URL:', error);
+        showError('Failed to copy RPC URL to clipboard');
+      }
     }
   </script>
 </body>

@@ -8,7 +8,22 @@ import { setupRoutes } from '../utils/routes.js';
 import { setupRpcRoutes } from '../utils/rpc-routes.js';
 import { HeliosClient } from '../ethereum/helios-client.js';
 import { IPFSManager } from '../ipfs/ipfs-manager.js';
-import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache } from '../utils/cache-api.js';
+import { getAllCachedDomains, getDomainFavicon, getDomainSizes, clearDomainCache, enableAutoSeeding, disableAutoSeeding } from '../utils/cache-api.js';
+
+/**
+ * Format bytes into human readable format
+ * @param {number} bytes - Number of bytes
+ * @returns {string} Formatted string
+ */
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
 
 /**
  * LocalNodeServer - Manages the Express server, HTTPS, Helios client, and ENS resolution
@@ -109,6 +124,11 @@ export class LocalNodeServer {
       res.sendFile(faviconPath);
     });
     
+    this.nodeCacheApp.get('/icon.svg', (req, res) => {
+      const iconPath = path.join(process.cwd(), 'assets', 'icon.svg');
+      res.sendFile(iconPath);
+    });
+    
     // API endpoint to get all cached domains (fast - just domain + CID)
     this.nodeCacheApp.get('/api/cached-domains', (req, res) => {
       try {
@@ -166,6 +186,39 @@ export class LocalNodeServer {
         res.json({ success });
       } catch (error) {
         console.error('Error clearing cache:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // API endpoint to toggle auto-seeding for a domain
+    this.nodeCacheApp.post('/api/toggle-auto-seed', async (req, res) => {
+      const domain = req.query.domain;
+      const enable = req.query.enable === 'true';
+      
+      if (!domain) {
+        return res.status(400).json({ error: 'Domain parameter is required' });
+      }
+      
+      try {
+        const success = enable 
+          ? await enableAutoSeeding(domain, this.ipfsManager)
+          : await disableAutoSeeding(domain, this.ipfsManager);
+        res.json({ success });
+      } catch (error) {
+        console.error('Error toggling auto-seed:', error);
+        res.status(500).json({ error: error.message });
+      }
+    });
+    
+    // API endpoint to get total storage used
+    this.nodeCacheApp.get('/api/total-storage', async (req, res) => {
+      try {
+        const client = this.ipfsManager.getClient();
+        const stat = await client.files.stat('/localnode-cache', { withLocal: true });
+        const totalUsed = stat.sizeLocal || 0;
+        res.json({ totalUsed: formatBytes(totalUsed) });
+      } catch (error) {
+        console.error('[CACHE API] Error getting total storage:', error);
         res.status(500).json({ error: error.message });
       }
     });

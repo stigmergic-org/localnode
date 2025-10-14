@@ -9,8 +9,110 @@ import { toString } from 'uint8arrays';
  */
 
 /**
+ * Check if a domain has auto-seeding enabled
+ * @param {string} domain - The domain name
+ * @returns {boolean} True if auto-seeding is enabled
+ */
+export function isAutoSeedingEnabled(domain) {
+  try {
+    const cacheDir = getCacheDir();
+    const domainDir = path.join(cacheDir, domain);
+    const autoSeedFile = path.join(domainDir, 'auto-seeding');
+    return fs.existsSync(autoSeedFile);
+  } catch (error) {
+    return false;
+  }
+}
+
+/**
+ * Enable auto-seeding for a domain
+ * @param {string} domain - The domain name
+ * @param {IPFSManager} ipfsManager - The IPFS manager instance
+ * @returns {Promise<boolean>} True if enabled successfully
+ */
+export async function enableAutoSeeding(domain, ipfsManager) {
+  try {
+    const cacheDir = getCacheDir();
+    const domainDir = path.join(cacheDir, domain);
+    const autoSeedFile = path.join(domainDir, 'auto-seeding');
+    
+    // Ensure domain directory exists
+    if (!fs.existsSync(domainDir)) {
+      fs.mkdirSync(domainDir, { recursive: true });
+    }
+    
+    // Get the CID for this domain
+    const cid = getLatestCid(domain);
+    if (!cid) {
+      throw new Error(`No CID found for domain: ${domain}`);
+    }
+    
+    // Pin the CID recursively (this will fetch missing blocks from network)
+    if (ipfsManager) {
+      try {
+        const client = ipfsManager.getClient();
+        console.log(`Pinning CID ${cid} for auto-seeding domain: ${domain}`);
+        await client.pin.add(cid, { recursive: true });
+        console.log(`Successfully pinned CID ${cid} for domain: ${domain}`);
+      } catch (pinError) {
+        console.error(`Failed to pin CID ${cid} for domain ${domain}:`, pinError.message);
+        throw new Error(`Failed to pin content: ${pinError.message}`);
+      }
+    }
+    
+    // Create auto-seeding file
+    fs.writeFileSync(autoSeedFile, '');
+    console.log(`Enabled auto-seeding for domain: ${domain}`);
+    return true;
+  } catch (error) {
+    console.error(`Error enabling auto-seeding for ${domain}:`, error.message);
+    throw error;
+  }
+}
+
+/**
+ * Disable auto-seeding for a domain
+ * @param {string} domain - The domain name
+ * @param {IPFSManager} ipfsManager - The IPFS manager instance
+ * @returns {Promise<boolean>} True if disabled successfully
+ */
+export async function disableAutoSeeding(domain, ipfsManager) {
+  try {
+    const cacheDir = getCacheDir();
+    const domainDir = path.join(cacheDir, domain);
+    const autoSeedFile = path.join(domainDir, 'auto-seeding');
+    
+    // Get the CID for this domain before removing the file
+    const cid = getLatestCid(domain);
+    
+    if (fs.existsSync(autoSeedFile)) {
+      fs.unlinkSync(autoSeedFile);
+      console.log(`Disabled auto-seeding for domain: ${domain}`);
+    }
+    
+    // Unpin the CID if we have it and IPFS manager
+    if (cid && ipfsManager) {
+      try {
+        const client = ipfsManager.getClient();
+        console.log(`Unpinning CID ${cid} for domain: ${domain}`);
+        await client.pin.rm(cid);
+        console.log(`Successfully unpinned CID ${cid} for domain: ${domain}`);
+      } catch (pinError) {
+        console.warn(`Failed to unpin CID ${cid} for domain ${domain}:`, pinError.message);
+        // Don't throw error for unpin failures - the file is already removed
+      }
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`Error disabling auto-seeding for ${domain}:`, error.message);
+    throw error;
+  }
+}
+
+/**
  * Get all cached domains with just basic info (fast)
- * @returns {Promise<Array>} Array of domain objects with domain, cid, lastCached
+ * @returns {Promise<Array>} Array of domain objects with domain, cid, lastCached, autoSeeding
  */
 export function getAllCachedDomains() {
   try {
@@ -41,10 +143,14 @@ export function getAllCachedDomains() {
           ? new Date(parseInt(cacheFiles[0].replace('.txt', '')))
           : null;
         
+        // Check if auto-seeding is enabled
+        const autoSeeding = isAutoSeedingEnabled(domain);
+        
         domains.push({
           domain,
           cid,
-          lastCached: lastCached ? lastCached.toISOString() : null
+          lastCached: lastCached ? lastCached.toISOString() : null,
+          autoSeeding
         });
       } catch (error) {
         console.error(`Error processing domain ${domain}:`, error.message);
