@@ -1,6 +1,6 @@
 import { ipcMain } from 'electron';
 import { loadConfig, saveConfig, getCertsDir } from '../utils/config.js';
-import { LocalCA } from '../certificates/local-ca.js';
+import { OpenSSLCA } from '../certificates/openssl-ca.js';
 import { closeSettingsWindow, getCertDialogWindow } from './windows.js';
 
 /**
@@ -48,8 +48,8 @@ export function setupIPCHandlers(server) {
   ipcMain.handle('install-certificate', async () => {
     try {
       const certDir = getCertsDir();
-      const localCA = new LocalCA(certDir);
-      const success = await localCA.installCAToSystem();
+      const opensslCA = new OpenSSLCA(certDir);
+      const success = await opensslCA.installCAToSystem();
       return { success };
     } catch (error) {
       console.error('Error installing certificate:', error);

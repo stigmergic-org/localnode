@@ -357,15 +357,28 @@ export class LocalNodeServer {
       // Setup routes now that IPFS is initialized and gateway URL is available
       this.setupRoutes();
       
-      // Generate SSL certificates using local CA
-      await generateCertificates(this.options.certDir, this.options.domain);
+      // Generate SSL certificates using OpenSSL CA and get the CA instance
+      this.opensslCA = await generateCertificates(this.options.certDir, this.options.domain);
       
-      // Read SSL certificates
-      // Include CA certificate in the chain for proper validation
+      // Read default SSL certificates for initial setup
+      // Default *.eth.localhost cert is signed by root CA (2-level chain)
+      const defaultKey = fs.readFileSync(path.join(this.options.certDir, 'server-key.pem'));
+      const ethCert = fs.readFileSync(path.join(this.options.certDir, 'eth-cert.pem'), 'utf8');
+      const rootCert = fs.readFileSync(path.join(this.options.certDir, 'root-ca-cert.pem'), 'utf8');
+      
+      // Concatenate eth cert with root for full chain (no intermediate for default cert)
+      const defaultCert = ethCert + '\n' + rootCert;
+      
+      this.logger.info('Loaded SSL certificates');
+      this.logger.debug(`Key size: ${defaultKey.length} bytes`);
+      this.logger.debug(`Cert chain size: ${defaultCert.length} bytes`);
+      
+      // HTTPS options with SNI callback for dynamic certificate loading
       const httpsOptions = {
-        key: fs.readFileSync(path.join(this.options.certDir, 'key.pem')),
-        cert: fs.readFileSync(path.join(this.options.certDir, 'cert.pem')),
-        ca: fs.readFileSync(path.join(this.options.certDir, 'ca-cert.pem'))
+        key: defaultKey,
+        cert: defaultCert,
+        // SNI callback for dynamic certificate selection based on hostname (for subdomain support)
+        SNICallback: this.opensslCA.getSNICallback(this.options.domain)
       };
 
       // Create a router to handle both ENS and RPC requests on HTTPS
@@ -445,6 +458,11 @@ export class LocalNodeServer {
       // Stop managed IPFS instance if running
       if (this.ipfsManager) {
         await this.ipfsManager.stop();
+      }
+      
+      // Clean up dynamically generated certificates
+      if (this.opensslCA) {
+        this.opensslCA.cleanup();
       }
       
       if (this.httpsServer) {

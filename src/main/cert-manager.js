@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { getCertsDir } from '../utils/config.js';
-import { LocalCA } from '../certificates/local-ca.js';
+import { OpenSSLCA } from '../certificates/openssl-ca.js';
 import { createCertDialog } from './windows.js';
 import { createLogger } from '../utils/logger.js';
 
@@ -12,23 +12,23 @@ import { createLogger } from '../utils/logger.js';
 export async function checkAndInstallCertificates() {
   const logger = createLogger('CertManager');
   const certDir = getCertsDir();
-  const localCA = new LocalCA(certDir);
-  const caCertPath = path.join(certDir, 'ca-cert.pem');
+  const opensslCA = new OpenSSLCA(certDir);
+  const rootCertPath = path.join(certDir, 'root-ca-cert.pem');
 
-  // If CA certificate already exists and is installed, skip
-  if (fs.existsSync(caCertPath)) {
-    const isInstalled = await localCA.isCertificateInstalled();
+  // If root CA certificate already exists and is installed, skip
+  if (fs.existsSync(rootCertPath)) {
+    const isInstalled = await opensslCA.isCertificateInstalled();
     if (isInstalled) {
-      logger.info('Certificate is already installed in system keychain');
+      logger.info('Root CA is already installed in system keychain');
       return true;
     }
   }
 
   // Need to create or install certificates
   // Create CA first if it doesn't exist
-  if (!fs.existsSync(caCertPath)) {
-    logger.info('Creating Certificate Authority');
-    await localCA.createCA();
+  if (!fs.existsSync(rootCertPath)) {
+    logger.info('Creating Certificate Authority hierarchy');
+    await opensslCA.initialize(true); // Skip install prompt, we'll handle it ourselves
   }
 
   // Show the certificate installation dialog
@@ -42,7 +42,7 @@ export async function checkAndInstallCertificates() {
   }
 
   if (result.success) {
-    logger.info('Certificate installed successfully');
+    logger.info('Root CA installed successfully');
     return true;
   } else {
     logger.error('Certificate installation failed', result.error);

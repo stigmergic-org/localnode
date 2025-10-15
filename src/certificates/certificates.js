@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { LocalCA } from './local-ca.js';
+import { OpenSSLCA } from './openssl-ca.js';
 import { createLogger } from '../utils/logger.js';
 
 async function generateCertificates(certDir, domain) {
@@ -11,30 +11,42 @@ async function generateCertificates(certDir, domain) {
     fs.mkdirSync(certDir, { recursive: true });
   }
 
-  const keyPath = path.join(certDir, 'key.pem');
-  const certPath = path.join(certDir, 'cert.pem');
-
-  // Check if certificates already exist
-  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
-    logger.info('SSL certificates already exist');
-    return;
-  }
-
-  logger.info('Generating locally-trusted SSL certificates using local CA');
+  logger.info('Initializing OpenSSL-based certificate system');
   
   try {
-    const localCA = new LocalCA(certDir);
+    const opensslCA = new OpenSSLCA(certDir);
     
-    // Initialize CA (create if doesn't exist)
+    // Initialize CA (creates root CA, intermediate CA, and all certificates on first run)
     // Skip install prompt in Electron mode - it's handled separately in main.js
     const skipInstallPrompt = !!process.versions.electron;
-    await localCA.initialize(skipInstallPrompt);
+    await opensslCA.initialize(skipInstallPrompt);
     
-    // Generate server certificate signed by the local CA
-    await localCA.generateServerCertificate(domain);
+    // Verify certificates were created
+    const serverKeyPath = path.join(certDir, 'server-key.pem');
+    const ethCertPath = path.join(certDir, 'eth-cert.pem');
     
-    console.log('✅ Successfully generated locally-trusted SSL certificates using local CA');
-    console.log('These certificates should be automatically trusted by your browser');
+    if (!fs.existsSync(serverKeyPath)) {
+      throw new Error(`Server key was not created at: ${serverKeyPath}`);
+    }
+    if (!fs.existsSync(ethCertPath)) {
+      throw new Error(`Eth cert was not created at: ${ethCertPath}`);
+    }
+    
+    console.log('✅ Successfully generated locally-trusted SSL certificates using OpenSSL');
+    console.log('   📜 Certificate Chain Architecture:');
+    console.log('      ├─ *.eth.localhost → Root CA (2-level, one-time signing)');
+    console.log('      ├─ *.simplepage.eth.localhost → Intermediate CA → Root CA (3-level, JIT)');
+    console.log('      └─ *.node.localhost → Root CA (2-level, one-time signing)');
+    console.log('   📁 Certificate Files:');
+    console.log('      ├─ server-key.pem (shared by all leaf certs)');
+    console.log('      ├─ eth-cert.pem');
+    console.log('      ├─ node-cert.pem');
+    console.log('      ├─ wildcard-<name>-eth-cert.pem (JIT generated)');
+    console.log('      ├─ intermediate-ca-key.pem + intermediate-ca-cert.pem');
+    console.log('      └─ root-ca-cert.pem (install this in system keychain)');
+    
+    // Return the CA instance for SNI callback usage
+    return opensslCA;
     
   } catch (error) {
     throw new Error(`Failed to generate SSL certificates: ${error.message}`);
