@@ -3,6 +3,8 @@ import { path as kuboPath } from 'kubo';
 import { create as createKuboClient } from 'kubo-rpc-client';
 import { getIpfsDir } from '../utils/config.js';
 import { createLogger } from '../utils/logger.js';
+import fs from 'fs';
+import path from 'path';
 
 // Standard IPFS API port - we check this and use it for managed instance
 const IPFS_API_PORT = 5001;
@@ -86,33 +88,45 @@ export class IPFSManager {
       const ipfsRepoPath = getIpfsDir();
       this.logger.info(`  Repo Path: ${ipfsRepoPath}`);
       
+      // Create IPFS node without starting it yet
       this.node = await createNode({
         type: 'kubo',
         rpc: createKuboClient,
         bin: kuboPath(),
         repo: ipfsRepoPath,
         init: true,
-        start: true,
-        disposable: false,
-        config: {
-          Addresses: {
-            Gateway: `/ip4/127.0.0.1/tcp/${MANAGED_GATEWAY_PORT}`
-          },
-          API: {
-            HTTPHeaders: {
-              'Access-Control-Allow-Origin': [
-                'https://webui.ipfs.io',
-              ],
-              'Access-Control-Allow-Methods': ['GET', 'POST', 'PUT'],
-              'Access-Control-Allow-Headers': ['X-Requested-With', 'Content-Type']
-            }
-          }
-        }
+        start: false, // Don't start yet - we'll set config first
+        disposable: false
       });
       
       this.isManaged = true;
       
-      // Get the API client from the node
+      // Directly edit the config file before starting (API client won't work until node is started)
+      this.logger.debug('Setting IPFS configuration via config file...');
+      const configPath = path.join(ipfsRepoPath, 'config');
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      
+      // Set gateway port
+      config.Addresses = config.Addresses || {};
+      config.Addresses.Gateway = `/ip4/127.0.0.1/tcp/${MANAGED_GATEWAY_PORT}`;
+      
+      // Set API CORS headers
+      config.API = config.API || {};
+      config.API.HTTPHeaders = {
+        'Access-Control-Allow-Origin': ['https://webui.ipfs.io'],
+        'Access-Control-Allow-Methods': ['GET', 'POST', 'PUT'],
+        'Access-Control-Allow-Headers': ['X-Requested-With', 'Content-Type']
+      };
+      
+      // Write config back
+      fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+      this.logger.debug(`Configuration set: Gateway port ${MANAGED_GATEWAY_PORT}`);
+      
+      // Now start the node with the correct configuration
+      this.logger.debug('Starting IPFS node...');
+      await this.node.start();
+      
+      // Get the API client from the started node
       this.client = this.node.api;
       
       // Fetch actual gateway URL from IPFS configuration

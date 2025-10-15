@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer as createHttpsServer } from 'https';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { generateCertificates } from '../certificates/certificates.js';
 import { ENSResolver } from '../ethereum/ens-resolver.js';
 import { setupRoutes } from '../utils/routes.js';
@@ -13,6 +14,9 @@ import { saveCidIfChanged } from '../utils/cache-manager.js';
 import { CID } from 'multiformats/cid';
 import { createLogger } from '../utils/logger.js';
 import { createLoggingMiddleware, createErrorLoggingMiddleware } from '../utils/logging-middleware.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Format bytes into human readable format
@@ -106,23 +110,23 @@ export class LocalNodeServer {
   setupNodeCacheRoutes() {
     // Serve the node cache management page
     this.nodeCacheApp.get('/', (req, res) => {
-      const indexPath = path.join(process.cwd(), 'src', 'renderer', 'node-cache', 'index.html');
+      const indexPath = path.join(__dirname, '..', 'renderer', 'node-cache', 'index.html');
       res.sendFile(indexPath);
     });
     
     // Serve favicon
     this.nodeCacheApp.get('/favicon.svg', (req, res) => {
-      const faviconPath = path.join(process.cwd(), 'assets', 'logo.svg');
+      const faviconPath = path.join(__dirname, '..', '..', 'assets', 'logo.svg');
       res.sendFile(faviconPath);
     });
     
     this.nodeCacheApp.get('/favicon.png', (req, res) => {
-      const faviconPath = path.join(process.cwd(), 'assets', 'logo.png');
+      const faviconPath = path.join(__dirname, '..', '..', 'assets', 'logo.png');
       res.sendFile(faviconPath);
     });
     
     this.nodeCacheApp.get('/icon.svg', (req, res) => {
-      const iconPath = path.join(process.cwd(), 'assets', 'icon.svg');
+      const iconPath = path.join(__dirname, '..', '..', 'assets', 'icon.svg');
       res.sendFile(iconPath);
     });
     

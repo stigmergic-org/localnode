@@ -4,7 +4,7 @@ import { createLogger } from '../utils/logger.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import forge from 'node-forge';
+import crypto from 'crypto';
 import sudo from '@expo/sudo-prompt';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -12,6 +12,27 @@ const __dirname = path.dirname(__filename);
 
 const execAsync = promisify(exec);
 const sudoExec = promisify(sudo.exec);
+
+/**
+ * Calculate SHA-1 fingerprint of a PEM certificate using Node.js crypto
+ * @param {string} certPem - PEM-encoded certificate
+ * @returns {string} - SHA-1 hash in uppercase hex format
+ */
+function getCertificateFingerprint(certPem) {
+  // Extract base64 content from PEM (between BEGIN and END markers)
+  const base64Cert = certPem
+    .replace(/-----BEGIN CERTIFICATE-----/, '')
+    .replace(/-----END CERTIFICATE-----/, '')
+    .replace(/\s/g, '');
+  
+  // Convert base64 to DER (binary)
+  const derCert = Buffer.from(base64Cert, 'base64');
+  
+  // Calculate SHA-1 hash
+  const hash = crypto.createHash('sha1').update(derCert).digest('hex');
+  
+  return hash.toUpperCase();
+}
 
 class PlatformInstaller {
   async installCA(caCertPath) {
@@ -56,14 +77,9 @@ class MacOSInstaller extends PlatformInstaller {
       }
       
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
-      const localCert = forge.pki.certificateFromPem(localCertPem);
 
       // Calculate SHA-1 fingerprint (macOS security command uses SHA-1 as unique ID)
-      const sha1Hash = forge.md.sha1.create()
-        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
-        .digest()
-        .toHex()
-        .toUpperCase();
+      const sha1Hash = getCertificateFingerprint(localCertPem);
 
       // Search for the certificate by its unique SHA-1 hash in the login keychain
       // -a shows all certificates, -Z shows SHA-1 hash, then we grep for our specific hash
@@ -141,14 +157,9 @@ class WindowsInstaller extends PlatformInstaller {
       }
       
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
-      const localCert = forge.pki.certificateFromPem(localCertPem);
 
       // Calculate SHA-1 fingerprint
-      const sha1Hash = forge.md.sha1.create()
-        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
-        .digest()
-        .toHex()
-        .toUpperCase();
+      const sha1Hash = getCertificateFingerprint(localCertPem);
 
       // Check if certificate exists in Windows cert store
       // certutil -verifystore Root returns all certs; we look for our thumbprint
@@ -184,12 +195,7 @@ class LinuxInstaller extends PlatformInstaller {
       
       // Calculate SHA-1 hash to include in filename
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
-      const localCert = forge.pki.certificateFromPem(localCertPem);
-      const sha1Hash = forge.md.sha1.create()
-        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
-        .digest()
-        .toHex()
-        .toLowerCase();
+      const sha1Hash = getCertificateFingerprint(localCertPem).toLowerCase();
 
       const caDir = '/usr/local/share/ca-certificates';
       // Include hash in filename to make it unique to this specific certificate
@@ -222,12 +228,7 @@ class LinuxInstaller extends PlatformInstaller {
       }
 
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
-      const localCert = forge.pki.certificateFromPem(localCertPem);
-      const sha1Hash = forge.md.sha1.create()
-        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
-        .digest()
-        .toHex()
-        .toLowerCase();
+      const sha1Hash = getCertificateFingerprint(localCertPem).toLowerCase();
 
       // Check if the certificate file with this specific hash exists
       const caFile = `/usr/local/share/ca-certificates/localnode-ca-${sha1Hash}.crt`;
@@ -244,12 +245,7 @@ class LinuxInstaller extends PlatformInstaller {
     let hashSuffix = '';
     try {
       const localCertPem = fs.readFileSync(caCertPath, 'utf8');
-      const localCert = forge.pki.certificateFromPem(localCertPem);
-      const sha1Hash = forge.md.sha1.create()
-        .update(forge.asn1.toDer(forge.pki.certificateToAsn1(localCert)).getBytes())
-        .digest()
-        .toHex()
-        .toLowerCase();
+      const sha1Hash = getCertificateFingerprint(localCertPem).toLowerCase();
       hashSuffix = `-${sha1Hash}`;
     } catch (error) {
       // If we can't read cert, just show generic instructions

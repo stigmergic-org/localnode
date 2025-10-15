@@ -25,8 +25,16 @@
     "files": [
       "src/**/*",
       "assets/**/*",
-      "package.json"
+      "package.json",
+      "pnpm-lock.yaml",
+      "!node_modules",
+      "node_modules/**/*"
     ],
+    "npmRebuild": true,
+    "nodeGypRebuild": false,
+    "directories": {
+      "buildResources": "assets"
+    },
     "mac": {
       "icon": "assets/icon.png",
       "category": "public.app-category.utilities",

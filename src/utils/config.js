@@ -10,7 +10,7 @@ const CONFIG_FILE = path.join(CONFIG_DIR, 'config.json');
 const DEFAULT_CONFIG = {
   // Helios light client configuration
   consensusRpc: 'https://ethereum.operationsolarstorm.org',
-  executionRpc: 'https://mainnet.gateway.tenderly.co',
+  executionRpc: 'https://eth.drpc.org',
   // Server configuration
   domain: 'localhost',
   port: 443,
