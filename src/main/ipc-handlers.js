@@ -2,12 +2,15 @@ import { ipcMain } from 'electron';
 import { loadConfig, saveConfig, getCertsDir } from '../utils/config.js';
 import { OpenSSLCA } from '../certificates/openssl-ca.js';
 import { closeSettingsWindow, getCertDialogWindow } from './windows.js';
+import { createLogger } from '../utils/logger.js';
+
+const logger = createLogger('IPC');
 
 /**
  * Setup all IPC handlers
- * @param {Object} server - The LocalNodeServer instance
+ * @param {Application} application - The Application instance
  */
-export function setupIPCHandlers(server) {
+export function setupIPCHandlers(application) {
   // Configuration handlers
   ipcMain.handle('load-config', () => {
     return loadConfig();
@@ -20,22 +23,23 @@ export function setupIPCHandlers(server) {
         return { success: false, error: 'Failed to save configuration' };
       }
       
-      console.log('Configuration saved successfully');
+      logger.info('Configuration saved successfully');
       
       // Restart server with new configuration
+      const server = application.getServer();
       if (server) {
-        console.log('Applying new settings...');
+        logger.info('Applying new settings...');
         await server.restart({
           consensusRpc: config.consensusRpc,
           executionRpc: config.executionRpc,
           ipfsApiUrl: config.ipfsApiUrl
         });
-        console.log('Settings applied successfully');
+        logger.info('Settings applied successfully');
       }
       
       return { success: true };
     } catch (error) {
-      console.error('Error applying settings:', error);
+      logger.error('Error applying settings', error);
       return { success: false, error: error.message };
     }
   });
@@ -52,7 +56,7 @@ export function setupIPCHandlers(server) {
       const success = await opensslCA.installCAToSystem();
       return { success };
     } catch (error) {
-      console.error('Error installing certificate:', error);
+      logger.error('Error installing certificate', error);
       return { success: false, error: error.message };
     }
   });
@@ -61,7 +65,6 @@ export function setupIPCHandlers(server) {
     const certDialogWindow = getCertDialogWindow();
     if (certDialogWindow && certDialogWindow.resolveFunction) {
       certDialogWindow.resolveFunction(result);
-      // Close the window after resolving
       certDialogWindow.close();
     }
   });
