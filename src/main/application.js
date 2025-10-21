@@ -35,11 +35,14 @@ export class Application {
       // Hide dock icon on macOS (accessory app)
       this.hideDockIcon();
 
+      // Create server instance (creates heliosClient but doesn't start yet)
+      await this.createServer();
+
       // Setup IPC handlers (now server will be available via getter)
       setupIPCHandlers(this);
 
-      // Create tray icon
-      this.tray = setupTray(() => createSettingsWindow());
+      // Create tray icon with helios client
+      this.tray = setupTray(this.server.heliosClient, () => createSettingsWindow());
       this.logger.info('Tray initialized');
 
       // Start server
@@ -53,19 +56,28 @@ export class Application {
   }
 
   /**
+   * Create the server instance (doesn't start it yet)
+   */
+  async createServer() {
+    const { LocalNodeServer } = await import('./server.js');
+    this.server = new LocalNodeServer({
+      port: this.config.port,
+      consensusRpc: this.config.consensusRpc,
+      executionRpc: this.config.executionRpc,
+      domain: this.config.domain,
+      certDir: getCertsDir(),
+      autoSeedingIntervalMinutes: this.config.autoSeedingIntervalMinutes
+    });
+    this.logger.info('Server instance created');
+  }
+
+  /**
    * Start the server with current configuration
    */
   async startServer() {
     try {
       this.logger.info('Starting server');
-      this.server = await startServer({
-        port: this.config.port,
-        consensusRpc: this.config.consensusRpc,
-        executionRpc: this.config.executionRpc,
-        domain: this.config.domain,
-        certDir: getCertsDir(),
-        autoSeedingIntervalMinutes: this.config.autoSeedingIntervalMinutes
-      });
+      await this.server.start();
       this.logger.info('Server started successfully');
     } catch (error) {
       this.logger.error('Failed to start server', error);

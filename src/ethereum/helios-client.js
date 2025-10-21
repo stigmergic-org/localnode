@@ -142,6 +142,68 @@ class HeliosClient {
     // Use viem's custom transport with the Helios provider
     return custom(this.provider);
   }
+
+  /**
+   * Fetch gas prices using eth_feeHistory from execution RPC directly
+   * Helios doesn't support eth_feeHistory yet, so we call the execution RPC directly
+   * @returns {Promise<{low: number, mid: number, high: number}|null>} Gas prices in gwei
+   */
+  async getGasPrices() {
+    try {
+      // Call the execution RPC directly since Helios doesn't support eth_feeHistory
+      const response = await fetch(this.executionRpc, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'eth_feeHistory',
+          params: [
+            '0xf', // 15 blocks in hex
+            'latest',
+            [10, 50, 95] // Standard percentiles: 10th (low), 50th (medium), 95th (high)
+          ]
+        })
+      });
+
+      if (!response.ok) {
+        this.logger.error('Failed to fetch gas prices', { status: response.status });
+        return null;
+      }
+
+      const data = await response.json();
+      const result = data.result;
+
+      if (!result || !result.baseFeePerGas || !result.reward) {
+        return null;
+      }
+
+      // Get the latest base fee (last element)
+      const latestBaseFee = BigInt(result.baseFeePerGas[result.baseFeePerGas.length - 1]);
+
+      // Calculate average priority fees for each percentile
+      const avgPriorityFees = [0, 1, 2].map(percentileIndex => {
+        const sum = result.reward.reduce((acc, reward) => {
+          return acc + BigInt(reward[percentileIndex] || '0x0');
+        }, 0n);
+        return sum / BigInt(result.reward.length);
+      });
+
+      // Convert to gwei (wei / 10^9) and add base fee + priority fee
+      const toGwei = (wei) => Number(wei) / 1e9;
+      
+      return {
+        low: Number(toGwei(latestBaseFee + avgPriorityFees[0]).toFixed(2)),
+        mid: Number(toGwei(latestBaseFee + avgPriorityFees[1]).toFixed(2)),
+        high: Number(toGwei(latestBaseFee + avgPriorityFees[2]).toFixed(2))
+      };
+    } catch (error) {
+      this.logger.error('Failed to fetch gas prices', error);
+      return null;
+    }
+  }
 }
 
 export { HeliosClient };

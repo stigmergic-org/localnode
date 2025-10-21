@@ -20,7 +20,7 @@ const __dirname = path.dirname(__filename);
 /**
  * LocalNodeServer - Manages the Express server, HTTPS, Helios client, and ENS resolution
  */
-export class LocalNodeServer {
+class LocalNodeServer {
   constructor(options = {}) {
     this.options = {
       port: options.port,
@@ -305,3 +305,5 @@ export async function startServer(options) {
   await server.start();
   return server;
 }
+
+export { LocalNodeServer };
